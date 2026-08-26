@@ -1,3 +1,123 @@
-version: '3'
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  COMPOSE: docker compose
+  TOPIC: github.pr.opened
+  USER_AGENT: redpanda-build-exercise
 
 tasks:
+  default:
+    desc: List tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Create .env from example if missing; warn if GITHUB_TOKEN is empty
+    cmds:
+      - |
+        set -euo pipefail
+        if [ ! -f .env ]; then
+          cp .env.example .env
+          echo "Created .env from .env.example — set GITHUB_TOKEN"
+        else
+          echo ".env already exists"
+        fi
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "WARNING: GITHUB_TOKEN is empty (needed for task github:events and Connect)"
+        else
+          echo "GITHUB_TOKEN is set"
+        fi
+
+  infra:up:
+    desc: Start Postgres + Redpanda; create the work topic
+    cmds:
+      - "{{.COMPOSE}} up -d --wait postgres redpanda"
+      - |
+        set -euo pipefail
+        {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} -X brokers=redpanda:9092 || true
+        {{.COMPOSE}} exec -T redpanda rpk topic list -X brokers=redpanda:9092
+        echo "Infra is up — Kafka localhost:19092, Postgres localhost:5432, topic {{.TOPIC}}"
+
+  infra:down:
+    desc: Stop infra (keeps volumes)
+    cmds:
+      - "{{.COMPOSE}} stop redpanda postgres"
+
+  infra:down:clean:
+    desc: Stop infra and delete volumes (wipes Postgres data and topic log)
+    cmds:
+      - "{{.COMPOSE}} down --volumes --remove-orphans"
+
+  github:events:
+    desc: GET /events — type counts and opened PRs (VERBOSE=1 for full page)
+    cmds:
+      - |
+        set -euo pipefail
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "install jq (e.g. brew install jq)" >&2
+          exit 1
+        fi
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GITHUB_TOKEN is empty — set it in .env" >&2
+          exit 1
+        fi
+        body=$(curl -sS \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "User-Agent: {{.USER_AGENT}}" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/events)
+        echo "=== event types ==="
+        echo "$body" | jq 'group_by(.type) | map({type: .[0].type, n: length})'
+        echo "=== PullRequestEvent action=opened ==="
+        echo "$body" | jq '[.[] | select(.type=="PullRequestEvent" and .payload.action=="opened")]'
+        if [ "${VERBOSE:-}" = "1" ]; then
+          echo "=== full page ==="
+          echo "$body" | jq .
+        fi
+
+  topic:consume:
+    desc: List topics and consume {{.TOPIC}} (FOLLOW=1 to tail; N=5 default)
+    cmds:
+      - |
+        set -euo pipefail
+        BROKERS="-X brokers=redpanda:9092"
+        {{.COMPOSE}} exec -T redpanda rpk topic list $BROKERS
+        if [ "${FOLLOW:-}" = "1" ]; then
+          {{.COMPOSE}} exec redpanda rpk topic consume {{.TOPIC}} $BROKERS
+          exit 0
+        fi
+        if ! {{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} $BROKERS >/dev/null; then
+          echo "topic {{.TOPIC}} not found — run task infra:up"
+          exit 0
+        fi
+        {{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} $BROKERS
+        # Last numeric field on partition rows is HIGH-WATERMARK (avoid hanging on empty).
+        hw=$({{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} $BROKERS | awk 'BEGIN{s=0} $1 ~ /^[0-9]+$/ {s+=$NF} END{print s+0}')
+        echo "high watermark (sum): $hw"
+        if [ "$hw" -eq 0 ]; then
+          echo "topic empty — nothing to consume (OK if github:events has no opened PRs)"
+          exit 0
+        fi
+        n="${N:-5}"
+        if [ "$hw" -lt "$n" ]; then
+          n="$hw"
+        fi
+        {{.COMPOSE}} exec -T redpanda rpk topic consume {{.TOPIC}} -n "$n" -o start $BROKERS
+
+  db:psql:
+    desc: psql in Postgres (pass extra args after --, e.g. -- -c '\dt')
+    cmds:
+      - |
+        set -euo pipefail
+        if [ -n "{{.CLI_ARGS}}" ]; then
+          {{.COMPOSE}} exec -T postgres psql -U triage -d triage {{.CLI_ARGS}}
+        else
+          {{.COMPOSE}} exec postgres psql -U triage -d triage
+        fi
+
+  logs:
+    desc: Tail compose logs (SERVICE=redpanda optional)
+    cmds:
+      - "{{.COMPOSE}} logs -f {{.SERVICE}}"
