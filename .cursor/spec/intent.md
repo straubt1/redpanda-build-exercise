@@ -22,7 +22,7 @@ AI is allowed for the build. The README Tradeoffs / surprises / production-break
 | Broker | `docker.redpanda.com/redpandadata/redpanda` (`--mode=dev-container`) |
 | Pipeline | `docker.redpanda.com/redpandadata/connect` (Apache-2.0 only) |
 | LLM | Local Ollama (open-weights). Hosted is allowed by the exercise; we are not starting there. |
-| Storage | `postgres:16` |
+| Storage | `postgres:18` |
 
 **Off-limits:** Redpanda Cloud, Enterprise Connect connectors (CDC, Snowflake Streaming, Iceberg, Salesforce), `a2a_message`.
 

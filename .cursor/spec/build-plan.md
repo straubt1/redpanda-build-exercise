@@ -15,7 +15,7 @@ Read with every phase: `.cursor/spec/README.md` (always-on constraints), `decisi
 ```
 Implement Phase 0 only from .cursor/spec/.
 
-Create docker-compose.yml with postgres:16 and Redpanda (docker.redpanda.com/redpandadata/redpanda, --mode=dev-container). Do not add Connect, Ollama, or the Go app yet if that keeps the phase small — or add them as stubs that we will fill later, but they must not be required for this phase's verify.
+Create docker-compose.yml with postgres:18 and Redpanda (docker.redpanda.com/redpandadata/redpanda, --mode=dev-container). Do not add Connect, Ollama, or the Go app yet if that keeps the phase small — or add them as stubs that we will fill later, but they must not be required for this phase's verify.
 
 Add db/schema.sql for pr_triages as in architecture.md and mount it so Postgres applies it on first boot.
 

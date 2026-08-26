@@ -21,7 +21,7 @@ services:
       start_period: 15s
 
   postgres:
-    image: postgres:16
+    image: postgres:18
     environment:
       POSTGRES_USER: triage
       POSTGRES_PASSWORD: triage
@@ -30,7 +30,7 @@ services:
       - "5432:5432"
     volumes:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U triage -d triage"]
       interval: 5s
