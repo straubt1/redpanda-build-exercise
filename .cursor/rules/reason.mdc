@@ -1,0 +1,27 @@
+---
+description: Go worker — enrich, skip-LLM, parse, extract then classify, upsert
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Reason service (Go)
+
+Consume `github.pr.opened`. Fetch pull body and changed files (token + User-Agent). Do not classify from title alone.
+
+Skip-LLM is an **ordered list** (after fetch): all `.md` → `docs`; all lockfiles → `dependency-bump`. Mixed trees go to the model. Empty file list is not `docs`.
+
+Loop: extract, then classify. Parse dirty JSON (first `{...}`), normalize labels, retry, then `unknown`. Upsert Postgres on `event_id`. Labels: `security|feature|refactor|docs|dependency-bump|unknown`.
+
+```go
+// ❌ BAD
+category := "docs" // from strings.Contains(title, "readme")
+
+// ✅ GOOD — skip-LLM on fetched file names only
+if cat, ok := skipLLM(files); ok {
+    return upsert(row, cat, sourceRule)
+}
+```
+
+Ack after successful upsert. Postgres errors: do not ack. Enum, skip-LLM, and parse stay as functions (extension seams).
+
+Details: `.cursor/spec/architecture.md`, `.cursor/spec/decisions.md`.

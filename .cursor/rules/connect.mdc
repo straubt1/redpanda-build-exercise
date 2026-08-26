@@ -1,0 +1,28 @@
+---
+description: Connect ingest — filter, project, cache; no LLM
+globs: connect/**
+alwaysApply: false
+---
+
+# Connect (plumbing only)
+
+Poll `GET https://api.github.com/events` with `GITHUB_TOKEN`, a non-empty `User-Agent`, and `Accept: application/vnd.github+json`.
+
+- Explode the JSON **array** into one message per event before filter.
+- Keep `PullRequestEvent` where `payload.action` is in an allowlist (`opened` only for v1).
+- Project the work-topic schema in `.cursor/spec/architecture.md`. One Bloblang mapping; `mapping` rebuilds `root`.
+- Cache on GitHub event `id`. Produce `github.pr.opened`.
+- Never call Ollama / OpenAI from Connect.
+
+```bloblang
+# ❌ BAD — one field drops the rest
+root.event_id = this.id
+
+# ✅ GOOD
+root.event_id = this.id
+root.repo = this.repo.name
+root.pr_number = this.payload.pull_request.number
+root.action = this.payload.action
+```
+
+Details: `.cursor/spec/architecture.md` (Connect section).
