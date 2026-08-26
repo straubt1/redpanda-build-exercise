@@ -62,5 +62,28 @@ services:
       - "8081:8080"
     restart: unless-stopped
 
+  pgadmin:
+    image: dpage/pgadmin4:9.17
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_DESKTOP_USER: '"admin@local.dev"'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_DISABLE_POSTFIX: "true"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/tmp/pgpass:ro
+    ports:
+      - "8082:80"
+    restart: unless-stopped
+    user: root
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - cp /tmp/pgpass /pgpass && chown 5050:5050 /pgpass && chmod 600 /pgpass && exec /entrypoint.sh
+
 volumes:
   postgres_data:

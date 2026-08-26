@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "triage",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "triage",
+      "Username": "triage",
+      "SSLMode": "prefer",
+      "PassFile": "/pgpass"
+    }
+  }
+}

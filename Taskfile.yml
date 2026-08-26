@@ -32,14 +32,14 @@ tasks:
         fi
 
   infra:up:
-    desc: Start Postgres + Redpanda; create the work topic
+    desc: Start Postgres + Redpanda + Console + pgAdmin; create the work topic
     cmds:
-      - "{{.COMPOSE}} up -d --wait postgres redpanda console"
+      - "{{.COMPOSE}} up -d --wait postgres redpanda console pgadmin"
       - |
         set -euo pipefail
         {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} -X brokers=redpanda:9092 || true
         {{.COMPOSE}} exec -T redpanda rpk topic list -X brokers=redpanda:9092
-        echo "Infra is up — Kafka localhost:19092, Postgres localhost:5432, Console http://localhost:8081, topic {{.TOPIC}}"
+        echo "Infra is up — Kafka localhost:19092, Postgres localhost:5432, Console http://localhost:8081, pgAdmin http://localhost:8082, topic {{.TOPIC}}"
 
   connect:up:
     desc: Start Connect ingest (requires GITHUB_TOKEN)
@@ -58,7 +58,7 @@ tasks:
   infra:down:
     desc: Stop infra (keeps volumes)
     cmds:
-      - "{{.COMPOSE}} stop connect console redpanda postgres"
+      - "{{.COMPOSE}} stop connect pgadmin console redpanda postgres"
 
   infra:down:clean:
     desc: Stop infra and delete volumes (wipes Postgres data and topic log)

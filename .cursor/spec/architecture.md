@@ -242,7 +242,7 @@ Plain CSS, no SPA. Usable at `localhost:8080`.
 
 ## Compose (target for the last infra phase)
 
-Services: `redpanda`, `connect`, `postgres`, `ollama`, `app`.
+Services: `redpanda`, `connect`, `postgres`, `ollama`, `app`. Local inspect: Console `:8081`, pgAdmin `:8082` (not the product UI).
 
 - Redpanda: `--mode=dev-container`.
 - App waits for broker + postgres; Ollama model may need a pull sidecar or documented `ollama pull`.

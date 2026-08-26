@@ -80,6 +80,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Task binary | `task` (go-task) on the host | `brew install go-task` |
 | Inspect GitHub | `task github:events` (`VERBOSE=1` for full page) | One curl; counts + opened PRs |
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
+| Inspect Postgres UI | pgAdmin `http://localhost:8082` | No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
 | jq | Required for `github:events` / `github:pull` | Fail clearly if missing |
 
 ### Lockfile set (skip-LLM)
@@ -151,3 +152,4 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Taskfile: `namespace:verb`, vars for variants, scripts may be multi-step (no task sprawl). See `devloop.md`.
 - 2026-08-26 — Connect poll: `generate` + `http` processor, multiple `/events` pages every 30s to cover more of the timeline. Not `http_client` on a single URL.
 - 2026-08-26 — Connect: max **4** opened-PR messages per generate sweep (`batch_index()`), then cache.
+- 2026-08-26 — pgAdmin on host **8082**, started with `infra:up` like Console. Desktop mode (`SERVER_MODE=False`) skips the login page.
