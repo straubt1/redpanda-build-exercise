@@ -23,6 +23,7 @@ Status vocabulary:
 | LLM runtime | Ollama, local |
 | Serve | Simple web UI. No framework requirement (`net/http` is enough). |
 | Result store | Postgres only. The worker writes. Serve reads Postgres. No result topic for v1. |
+| Dev CLI | [Task](https://taskfile.dev/) (`Taskfile.yml` at repo root). Leaf tasks for inspect/run; composites stitch them later. `.reference/Taskfile.yml` is not the spec. |
 
 ### Connect
 
@@ -76,6 +77,10 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | File budget | Max **20** files; each patch truncated to **4000** chars; filenames + status always kept | Open to retune |
 | Bot filter | **None** in v1 | Dependabot PRs may still flow. Extension-shaped later. |
 | Draft PRs | **Keep** (no filter) | Open to drop drafts in Connect later |
+| Task binary | `task` (go-task) on the host | `brew install go-task` |
+| Inspect GitHub | `task github:events` (`VERBOSE=1` for full page) | One curl; counts + opened PRs |
+| Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
+| jq | Required for `github:events` / `github:pull` | Fail clearly if missing |
 
 ### Lockfile set (skip-LLM)
 
@@ -143,3 +148,4 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Keep exercise labels + `unknown`; skip-LLM `.md` and lockfile; idempotency = event `id`; Postgres results.
 - 2026-08-26 — Working defaults filled so a from-scratch rebuild is not blocked (topic, table, poll, retries, file budget, model name).
 - 2026-08-26 — Spec moved to `.cursor/spec/`; thin Cursor rules in `.cursor/rules/` point at it.
+- 2026-08-26 — Taskfile: `namespace:verb`, vars for variants, scripts may be multi-step (no task sprawl). See `devloop.md`.

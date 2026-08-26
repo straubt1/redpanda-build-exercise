@@ -243,6 +243,8 @@ Services: `redpanda`, `connect`, `postgres`, `ollama`, `app`.
 - `.env` gitignored. `.env.example` lists `GITHUB_TOKEN` and any future LLM keys (empty).
 - Connect gets the token from env. Do not bake secrets into YAML.
 
+Developer loop (Taskfile, how to dump `/events`, how to consume topics): [devloop.md](devloop.md). `task up` may wrap Compose; `docker compose up` must still work for the takehome.
+
 ## Seams for the pre-walkthrough extension
 
 Keep these as obvious lists/functions, not scattered `if`s:

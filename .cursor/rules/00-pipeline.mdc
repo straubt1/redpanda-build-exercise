@@ -11,6 +11,7 @@ Design lives in `.cursor/spec/`. Application code is not canonical. If a choice 
 - Go owns fetch (PR body + files), skip-LLM rules, extract→classify, parse/retry, Postgres upsert.
 - Classify from **fetched content**, not title/event metadata alone (`regex wearing a costume`).
 - Implement **one** `.cursor/spec/build-plan.md` phase at a time. Stop at that phase's verify list.
+- Verify with `task` targets from `.cursor/spec/devloop.md`. Do not copy `.reference/Taskfile.yml`.
 - Do not draft README Tradeoffs / surprises / “Why this matters” with AI.
 
 ```yaml

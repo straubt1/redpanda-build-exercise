@@ -20,7 +20,7 @@ Cursor project rules in [`.cursor/rules/`](../rules/) are **short constraints**.
 - The Go service owns enrichment, skip-LLM rules, the reasoning loop, parse/retry, and Postgres writes.
 - The model must classify from **fetched PR body and changed files**, not from title/comment/event metadata alone.
 - Skip-LLM rules are allowed for obvious file-only cases (see decisions). Mixed trees go to the model.
-- One command to run the full system eventually: `docker compose up`. Each early phase may run a subset.
+- One command to run the full system eventually: `docker compose up` (Phase 8). Developer loop is **Taskfile** (`task …`); see [`devloop.md`](devloop.md). Each early phase may run a subset of tasks.
 - Do not write the README Tradeoffs / “Why this matters” with AI. That is a human-only deliverable at the end.
 - Prefer small, defendable Go over cleverness. The walkthrough will trace malformed model output line by line.
 
@@ -29,6 +29,7 @@ Cursor project rules in [`.cursor/rules/`](../rules/) are **short constraints**.
 | Work | Read |
 | --- | --- |
 | Any implementation | `README.md`, `decisions.md`, `architecture.md`, current phase in `build-plan.md` |
+| Inspect GitHub / topics / `task` targets | `devloop.md` |
 | “Why is the loop this shape?” | `intent.md`, `decisions.md` |
 | Changing a filter, topic field, or table column | `architecture.md`, `decisions.md` |
 | Parking or locking a choice | `decisions.md` only, then resume the phase |
@@ -41,6 +42,7 @@ Cursor project rules in [`.cursor/rules/`](../rules/) are **short constraints**.
 | [`decisions.md`](decisions.md) | Locked, working defaults, assumptions, open questions |
 | [`architecture.md`](architecture.md) | Flows, APIs, message/table contracts, failure behavior |
 | [`build-plan.md`](build-plan.md) | Ordered phases with copy-paste prompts and verify steps |
+| [`devloop.md`](devloop.md) | Taskfile leaves vs composites; how to view GitHub payloads and Redpanda topics |
 
 ## Related (not required to rebuild)
 

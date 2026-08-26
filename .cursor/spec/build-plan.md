@@ -4,7 +4,7 @@ Each phase is a complete prompt for a later coding session. Do not skip phases. 
 
 After each phase: run the **Verify** list and only then continue.
 
-Read with every phase: `.cursor/spec/README.md` (always-on constraints), `decisions.md`, `architecture.md`.
+Read with every phase: `.cursor/spec/README.md` (always-on constraints), `decisions.md`, `architecture.md`, `devloop.md` (Taskfile + inspect).
 
 ---
 
@@ -22,9 +22,11 @@ Add db/schema.sql for pr_triages as in architecture.md and mount it so Postgres 
 Add .env.example with GITHUB_TOKEN=.
 Add .gitignore entries for .env if missing.
 
+Fill Taskfile.yml (version 3, dotenv .env) with Phase 0 tasks from .cursor/spec/devloop.md: default, setup, infra:up, infra:down, github:events, topic:consume, db:psql, logs. Names are namespace:verb (two segments max); variants are vars. github:events is one script (type counts + opened PRs; VERBOSE=1 for full page). topic:consume lists topics then consumes (FOLLOW=1 to tail). infra:up creates the work topic. Do not copy .reference/Taskfile.yml. Do not add connect: or up/e2e yet.
+
 Do not implement ingest, worker, or UI.
 
-Verify the checklist in .cursor/spec/build-plan.md Phase 0.
+Verify the checklist in .cursor/spec/build-plan.md Phase 0. Use `task …` not one-off docker/rpk.
 ```
 
 ### In scope
@@ -32,6 +34,7 @@ Verify the checklist in .cursor/spec/build-plan.md Phase 0.
 - Compose: Postgres + Redpanda healthy
 - Schema applied
 - `.env.example`
+- `Taskfile.yml` Phase 0 tasks (`devloop.md`)
 
 ### Out of scope
 
@@ -39,9 +42,11 @@ Verify the checklist in .cursor/spec/build-plan.md Phase 0.
 
 ### Verify
 
-- [ ] `docker compose up -d` starts Postgres and Redpanda without errors
-- [ ] `psql` (or `docker compose exec postgres psql`) shows table `pr_triages` with PK `event_id`
-- [ ] Redpanda accepts `rpk` (from the Redpanda container) listing topics (empty is fine)
+- [ ] `task` lists targets; `task setup` creates `.env` if missing
+- [ ] `task infra:up` starts Postgres and Redpanda without errors
+- [ ] `task db:psql` shows table `pr_triages` with PK `event_id`
+- [ ] `task topic:consume` runs (empty topic is fine; should still list topics)
+- [ ] `task github:events` prints type counts and an opened-PR array (may be `[]`); token required
 - [ ] `.env` is gitignored; `.env.example` has no real token
 
 ---
@@ -64,9 +69,11 @@ Write connect/ingest.yaml:
 - Cache on event_id so a re-poll does not reproduce
 - Output to topic github.pr.opened (create topic if needed)
 
+Add Phase 1 task from .cursor/spec/devloop.md: connect:up (deps infra:up, compose up -d connect). Use existing topic:consume and logs SERVICE=connect. No extra follow/restart targets.
+
 No LLM in Connect. No Go worker yet.
 
-Verify Phase 1 checklist. Print 2–3 sample consumed messages in the session notes.
+Verify Phase 1 checklist. Print 2–3 sample messages from `task topic:consume`. If the topic is empty, use `task github:events` and say whether that page had opened PRs.
 ```
 
 ### In scope
@@ -80,13 +87,13 @@ Verify Phase 1 checklist. Print 2–3 sample consumed messages in the session no
 
 ### Verify
 
-- [ ] Compose brings up Redpanda + Connect (+ Postgres from Phase 0)
-- [ ] Connect logs no auth/UA errors (token in env)
-- [ ] `rpk topic consume github.pr.opened` shows JSON objects, **not** a raw array
-- [ ] Every message has `event_id`, `repo`, `pr_number`, `pr_url`, `action` (`opened`)
+- [ ] `task connect:up` brings up Redpanda + Connect (+ Postgres from Phase 0)
+- [ ] `task logs SERVICE=connect` shows no auth/UA errors (token in env)
+- [ ] `task topic:consume` shows JSON objects, **not** a raw array (or topic empty — see last item)
+- [ ] Every consumed message has `event_id`, `repo`, `pr_number`, `pr_url`, `action` (`opened`)
 - [ ] No `PushEvent` / issue events on the topic
-- [ ] Wait one extra poll: same `event_id` does not appear twice (cache)
-- [ ] If the public firehose has no opened PRs for a few minutes, that is acceptable — say so and keep polling; do not loosen the filter to “any PR action” to force traffic
+- [ ] Wait one extra poll (`task topic:consume FOLLOW=1` or a second consume): same `event_id` does not appear twice (cache)
+- [ ] If `task github:events` shows no opened PRs, an empty topic is acceptable — say so; do not loosen the filter to “any PR action” to force traffic
 
 ---
 
@@ -157,6 +164,7 @@ Verify Phase 3 against a real opened PR from the topic or a manually produced me
 ### Verify
 
 - [ ] A real PR row shows evidence of fetched files (names in rationale, log, or column)
+- [ ] `task github:pull` (or the Phase 3 task from `devloop.md`) shows body/files for the same repo/number
 - [ ] Body from the pull API is available to the next phase (in memory or stored)
 - [ ] Invalid repo/pr upserts `unknown` with `error` set, consumer continues
 - [ ] Logs include event_id and GitHub status on failure
@@ -324,7 +332,9 @@ Make docker compose up the full path: redpanda, connect, postgres, ollama, app.
 
 App Dockerfile is reproducible. Connect waits for Redpanda. App waits for broker + postgres.
 
-README.md: copy-pasteable run instructions only (env, compose, wait for Ollama model, open :8080). Do NOT write Tradeoffs, Why this matters, or surprises with AI. Leave a stub heading for those if you want, empty of generated prose.
+README.md: copy-pasteable run instructions only (env, compose **or** `task up`, wait for Ollama model, open :8080). Do NOT write Tradeoffs, Why this matters, or surprises with AI. Leave a stub heading for those if you want, empty of generated prose.
+
+Add Phase 8 tasks from .cursor/spec/devloop.md (`up`, `down`, `smoke`; reuse `logs`). Wrap Compose. `docker compose up` must still work without Task.
 
 .env.example complete. Logs on app/connect are greppable (event_id).
 
