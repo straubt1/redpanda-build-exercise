@@ -1,0 +1,10 @@
+{
+  "event_id": "sim-002",
+  "repo": "actions/checkout",
+  "pr_number": 1,
+  "pr_url": "https://github.com/actions/checkout/pull/1",
+  "title": "Test fixtures",
+  "author": "actions",
+  "action": "opened",
+  "created_at": "2019-08-01T00:00:00Z"
+}

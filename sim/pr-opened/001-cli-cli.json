@@ -1,0 +1,10 @@
+{
+  "event_id": "sim-001",
+  "repo": "cli/cli",
+  "pr_number": 1,
+  "pr_url": "https://github.com/cli/cli/pull/1",
+  "title": "Initial import of gh",
+  "author": "mislav",
+  "action": "opened",
+  "created_at": "2019-10-03T00:00:00Z"
+}

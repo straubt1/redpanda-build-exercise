@@ -9,6 +9,7 @@ alwaysApply: false
 Follow `.cursor/spec/devloop.md`. `version: '3'` and `dotenv: ['.env']`.
 
 - Names: `namespace:verb` (two segments max). Singletons (`setup`, `up`, `down`, `test`, `logs`) have no colon. Exception: `infra:down:clean` for volume wipe.
+- Sim loop: `sim:produce` / `sim:reset` / `sim:replay` over `sim/pr-opened/*.json`. Do not change `connect/ingest.yaml` for fixtures.
 - Variants are **vars** (`FOLLOW=1`, `VERBOSE=1`, `SERVICE=connect`), not `foo:bar:baz` targets.
 - A task may be a short script (one curl, several `jq` views). Do not split that into three tasks.
 - `deps:` for real prerequisites (`connect:up` → `infra:up`). Do not copy `.reference/Taskfile.yml`.

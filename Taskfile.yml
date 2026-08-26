@@ -6,6 +6,7 @@ vars:
   COMPOSE: docker compose
   TOPIC: github.pr.opened
   USER_AGENT: redpanda-build-exercise
+  SIM_DIR: sim/pr-opened
 
 tasks:
   default:
@@ -106,9 +107,9 @@ tasks:
           echo "topic {{.TOPIC}} not found — run task infra:up"
           exit 0
         fi
-        {{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} $BROKERS
-        # Last numeric field on partition rows is HIGH-WATERMARK (avoid hanging on empty).
-        hw=$({{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} $BROKERS | awk 'BEGIN{s=0} $1 ~ /^[0-9]+$/ {s+=$NF} END{print s+0}')
+        # Default describe omits partitions; -s -p is summary + HIGH-WATERMARK (skip hanging on empty).
+        {{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} -s -p $BROKERS
+        hw=$({{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} -p $BROKERS | awk 'BEGIN{s=0} $1 ~ /^[0-9]+$/ {s+=$NF} END{print s+0}')
         echo "high watermark (sum): $hw"
         if [ "$hw" -eq 0 ]; then
           echo "topic empty — nothing to consume (OK if github:events has no opened PRs)"
@@ -135,3 +136,50 @@ tasks:
     desc: Tail compose logs (SERVICE=redpanda optional)
     cmds:
       - "{{.COMPOSE}} logs -f {{.SERVICE}}"
+
+  sim:reset:
+    desc: Drop sim rows in Postgres and recreate the work topic (all messages)
+    cmds:
+      - |
+        set -euo pipefail
+        BROKERS="-X brokers=redpanda:9092"
+        {{.COMPOSE}} exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages WHERE event_id LIKE 'sim-%';"
+        connect_was_up=0
+        if [ -n "$({{.COMPOSE}} ps -q --status running connect 2>/dev/null || true)" ]; then
+          connect_was_up=1
+          {{.COMPOSE}} stop connect
+        fi
+        {{.COMPOSE}} exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
+        {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
+        if [ "$connect_was_up" = 1 ]; then
+          {{.COMPOSE}} start connect
+        fi
+        echo "Reset: Postgres sim-% rows deleted, topic {{.TOPIC}} recreated"
+
+  sim:produce:
+    desc: Produce {{.SIM_DIR}}/*.json onto the work topic (no GitHub API)
+    cmds:
+      - |
+        set -euo pipefail
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "install jq (e.g. brew install jq)" >&2
+          exit 1
+        fi
+        shopt -s nullglob
+        files=({{.SIM_DIR}}/*.json)
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "no fixtures in {{.SIM_DIR}}" >&2
+          exit 1
+        fi
+        for f in "${files[@]}"; do
+          echo "produce $f"
+          compact=$(jq -c . "$f")
+          {{.COMPOSE}} exec -T -e MSG="$compact" redpanda sh -c 'printf "%s\n" "$MSG" | rpk topic produce {{.TOPIC}} -X brokers=redpanda:9092'
+        done
+        echo "Produced ${#files[@]} message(s) to {{.TOPIC}} — Console http://localhost:8081"
+
+  sim:replay:
+    desc: sim:reset then sim:produce
+    cmds:
+      - task: sim:reset
+      - task: sim:produce

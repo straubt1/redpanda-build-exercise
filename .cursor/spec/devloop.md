@@ -115,6 +115,18 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `connect:up` | `deps: [infra:up]`, require token, `compose up -d connect` |
 
+### Sim (local fixtures, not GitHub)
+
+Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced with `rpk`; **Connect and ingest.yaml are unchanged**. `repo` + `pr_number` are real public PRs so a later worker GET still works.
+
+| Task | Does |
+| --- | --- |
+| `sim:produce` | Write fixture files onto `github.pr.opened` |
+| `sim:reset` | `DELETE` Postgres `event_id LIKE 'sim-%'`; **recreate** the work topic (wipes **all** topic messages); restart Connect if it was running |
+| `sim:replay` | `sim:reset` then `sim:produce` |
+
+Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.
+
 ### Later (do not implement early)
 
 - Phase 2+: `test` (`go test ./...`)
