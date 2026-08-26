@@ -55,10 +55,18 @@ tasks:
       - |
         echo "Connect started — next: task topic:consume   or   task logs SERVICE=connect"
 
+  app:up:
+    desc: Start Go worker (consume topic, upsert Postgres)
+    deps: [infra:up]
+    cmds:
+      - "{{.COMPOSE}} up -d --build app"
+      - |
+        echo "App started — next: task logs SERVICE=app  or  task db:psql"
+
   infra:down:
     desc: Stop infra (keeps volumes)
     cmds:
-      - "{{.COMPOSE}} stop connect pgadmin console redpanda postgres"
+      - "{{.COMPOSE}} stop app connect pgadmin console redpanda postgres"
 
   infra:down:clean:
     desc: Stop infra and delete volumes (wipes Postgres data and topic log)

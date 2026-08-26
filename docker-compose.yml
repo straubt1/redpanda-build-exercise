@@ -1,4 +1,4 @@
-# Phase 0–1: Postgres + Redpanda + Connect. Ollama / app are later phases.
+# Phase 0–2: Postgres + Redpanda + Connect + app. Ollama is a later phase.
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
@@ -84,6 +84,20 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - cp /tmp/pgpass /pgpass && chown 5050:5050 /pgpass && chmod 600 /pgpass && exec /entrypoint.sh
+
+  app:
+    build: .
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: github.pr.opened
+      KAFKA_GROUP: pr-triage-worker
+      POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
+    restart: unless-stopped
 
 volumes:
   postgres_data:

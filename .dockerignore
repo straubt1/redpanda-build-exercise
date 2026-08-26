@@ -1,6 +1,10 @@
 .git
 .local
+.reference
+.cursor
 bin
 .env
-*.md
-.dockerignore
+sim
+pgadmin
+connect
+reference

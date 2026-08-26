@@ -115,6 +115,12 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `connect:up` | `deps: [infra:up]`, require token, `compose up -d connect` |
 
+### Phase 2
+
+| Task | Does |
+| --- | --- |
+| `app:up` | `deps: [infra:up]`, `compose up -d --build app` (consume + upsert) |
+
 ### Sim (local fixtures, not GitHub)
 
 Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced with `rpk`; **Connect and ingest.yaml are unchanged**. `repo` + `pr_number` are real public PRs so a later worker GET still works.
