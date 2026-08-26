@@ -242,10 +242,10 @@ Plain CSS, no SPA. Usable at `localhost:8080`.
 
 ## Compose (target for the last infra phase)
 
-Services: `redpanda`, `connect`, `postgres`, `ollama`, `app`. Local inspect: Console `:8081`, pgAdmin `:8082` (not the product UI).
+Services: `redpanda`, `connect`, `postgres`, `app`. Local inspect: Console `:8081`, pgAdmin `:8082` (not the product UI). **Ollama is not a Compose service** — it runs on the host (`task ollama:up`). The app calls `host.docker.internal:11434`.
 
 - Redpanda: `--mode=dev-container`.
-- App waits for broker + postgres; Ollama model may need a pull sidecar or documented `ollama pull`.
+- App waits for broker + postgres. Host model: `ollama pull` of `OLLAMA_MODEL` (see Taskfile / `decisions.md`).
 - `.env` gitignored. `.env.example` lists `GITHUB_TOKEN` and any future LLM keys (empty).
 - Connect gets the token from env. Do not bake secrets into YAML.
 

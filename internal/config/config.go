@@ -13,6 +13,8 @@ type Config struct {
 	PostgresDSN     string
 	GitHubToken     string
 	GitHubUserAgent string
+	OllamaURL       string
+	OllamaModel     string
 }
 
 func FromEnv() (Config, error) {
@@ -22,6 +24,8 @@ func FromEnv() (Config, error) {
 		PostgresDSN:     getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
 		GitHubToken:     os.Getenv("GITHUB_TOKEN"),
 		GitHubUserAgent: getenv("GITHUB_USER_AGENT", "redpanda-build-exercise"),
+		OllamaURL:       getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
+		OllamaModel:     getenv("OLLAMA_MODEL", "qwen2.5:14b"),
 	}
 	if cfg.GitHubToken == "" {
 		return Config{}, fmt.Errorf("GITHUB_TOKEN is empty")

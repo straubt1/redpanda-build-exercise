@@ -4,7 +4,7 @@ How we run and inspect the pipeline while building. Runtime is still Docker Comp
 
 Install [Task](https://taskfile.dev/) on the host (`brew install go-task`). Repo root: `Taskfile.yml`. `task` with no args lists targets (`default` → `task --list`).
 
-Do not treat `.reference/Taskfile.yml` as canonical. Names below match **this** spec (one Go process, Ollama in Compose, labels including `unknown`).
+Do not treat `.reference/Taskfile.yml` as canonical. Names below match **this** spec (one Go process, Ollama on the **host**, labels including `unknown`).
 
 ---
 
@@ -15,7 +15,7 @@ Do not treat `.reference/Taskfile.yml` as canonical. Names below match **this** 
 3. **Verify** in `build-plan.md` calls `task …`. Variants use Task **vars**, not extra targets.
 4. Takehome “one command” remains `docker compose up` (Phase 8). `task up` may wrap that. Both must work.
 
-`dotenv: ['.env']`. Vars: `COMPOSE: docker compose`, `TOPIC: github.pr.opened`.
+`dotenv: ['.env']`. Vars: `COMPOSE: docker compose`, `TOPIC: github.pr.opened`, `OLLAMA_MODEL: qwen2.5:14b`.
 
 ---
 
@@ -133,6 +133,15 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `test` | `go test ./...` (skip-LLM + parse/normalize). `CLI_ARGS` for `-run` |
 
+### Host Ollama (not Compose)
+
+| Task | Does |
+| --- | --- |
+| `ollama:up` | Background `ollama serve` if 11434 is free; then `ollama:check` |
+| `ollama:logs` | `tail -f .local/ollama.log` |
+| `ollama:down` | Stop the process listening on 11434 |
+| `ollama:check` | GET `/api/version` + `/api/tags`. Warn if `OLLAMA_MODEL` (`qwen2.5:14b`) is missing |
+
 ### Sim (local fixtures, not GitHub)
 
 Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced with `rpk`; **Connect and ingest.yaml are unchanged**. `repo` + `pr_number` are real public PRs so a later worker GET still works.
@@ -161,5 +170,6 @@ Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.
 | Did Connect produce? | `task topic:consume` |
 | Watch polls / cache (no duplicate ids)? | `task topic:consume FOLLOW=1` |
 | Enrichment payload? | `task github:pull REPO=… PR=…` vs `task db:psql` |
+| Is host Ollama running? | `task ollama:check` (`task ollama:up` to start) |
 
 If opened PRs in `github:events` is `[]` and consume is quiet, the firehose is quiet — not a broken pipeline.

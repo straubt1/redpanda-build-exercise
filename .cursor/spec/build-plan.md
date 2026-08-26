@@ -251,9 +251,9 @@ Verify Phase 5.
 ```
 Implement Phase 6 only from .cursor/spec/.
 
-Add ollama/ollama to Compose. Document or automate pulling the working-default model (llama3.2 unless decisions.md changed).
+Do **not** add an `ollama` Compose service. Ollama runs on the host (`task ollama:up`). The app container must call `host.docker.internal:11434`.
 
-Go LLM client against Ollama's OpenAI-compatible API (or native). Timeouts required.
+Go LLM client against Ollama's OpenAI-compatible API (or native). Timeouts required. Model name from env / Taskfile `OLLAMA_MODEL` (working default `qwen2.5:14b`).
 
 For records that did not skip-LLM:
 1. extract prompt → parse/retry
@@ -270,16 +270,16 @@ Verify Phase 6. Confirm at least one llm-sourced row and one unknown path (force
 
 ### In scope
 
-- Ollama service, client, two-step loop, retries, upsert of LLM fields
+- Host Ollama (already tasked), Go client, two-step loop, retries, upsert of LLM fields
 - Logs: event_id, step name, parse retry count (no dumped secrets)
 
 ### Out of scope
 
-- Fancy UI, extra topics, hosted Claude
+- Fancy UI, extra topics, hosted Claude, Ollama-in-Docker
 
 ### Verify
 
-- [ ] `docker compose up` includes Ollama; app can reach it from its container (service name, not localhost, unless host-network is explicit)
+- [ ] `task ollama:check` succeeds; app can reach host Ollama from its container (`host.docker.internal:11434`, not `localhost`, not an `ollama` Compose DNS name)
 - [ ] A mixed-file PR gets a category in the enum or `unknown`, never a raw model sentence in `category`
 - [ ] Skip-LLM PRs still have **no** LLM call (log or `source=rule`)
 - [ ] Parse retries happen on garbage (test double preferred)
@@ -328,11 +328,11 @@ Verify Phase 7.
 ```
 Implement Phase 8 only from .cursor/spec/.
 
-Make docker compose up the full path: redpanda, connect, postgres, ollama, app.
+Make docker compose up the pipeline: redpanda, connect, postgres, app. Ollama stays on the host (`task ollama:up` before or beside compose).
 
 App Dockerfile is reproducible. Connect waits for Redpanda. App waits for broker + postgres.
 
-README.md: copy-pasteable run instructions only (env, compose **or** `task up`, wait for Ollama model, open :8080). Do NOT write Tradeoffs, Why this matters, or surprises with AI. Leave a stub heading for those if you want, empty of generated prose.
+README.md: copy-pasteable run instructions only (env, compose **or** `task up`, `task ollama:up`, wait/pull model, open :8080). Do NOT write Tradeoffs, Why this matters, or surprises with AI. Leave a stub heading for those if you want, empty of generated prose.
 
 Add Phase 8 tasks from .cursor/spec/devloop.md (`up`, `down`, `smoke`; reuse `logs`). Wrap Compose. `docker compose up` must still work without Task.
 
@@ -351,7 +351,7 @@ Verify Phase 8 from a cold compose down -v if possible.
 
 ### Verify
 
-- [ ] Fresh `docker compose up` (documented wait) yields a working UI without undocumented manual steps
+- [ ] Fresh `docker compose up` plus host Ollama (`task ollama:up`) yields a working UI without undocumented manual steps
 - [ ] Missing `GITHUB_TOKEN` fails loudly in logs
 - [ ] README is enough for someone else to run it
 

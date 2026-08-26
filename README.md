@@ -13,9 +13,22 @@ Host ports come from `docker-compose.yml` (`task infra:up`).
 
 `connect` has **no host port**. It polls GitHub and produces to Kafka on the Compose network (`redpanda:9092`). Logs: `task logs SERVICE=connect`.
 
-`app` has **no host port** this phase. It consumes `github.pr.opened`, GETs the PR body and changed files from GitHub, and upserts Postgres. Logs: `task logs SERVICE=app`. Start: `task app:up`. Inspect a PR the same way the worker does: `task github:pull REPO=owner/name PR=42`.
+`app` has **no host port** this phase. It consumes `github.pr.opened`, GETs PR body/files, skip-LLM or extract→classify via **host** Ollama (`host.docker.internal:11434`), and upserts Postgres. Logs: `task logs SERVICE=app`. Start: `task ollama:up` then `task app:up`.
 
 Inside the Compose network, Kafka is **`redpanda:9092`**. Tasks that `exec` into the Redpanda container (for example `task topic:consume`) use that address, not `19092`.
+
+## Host Ollama
+
+Ollama is **not** in Docker. Start it on the laptop (Metal) before the worker needs a model:
+
+```
+task ollama:up            # background ollama serve, then version + models
+task ollama:logs          # tail .local/ollama.log
+task ollama:check         # API only
+task ollama:down          # stop whatever is listening on 11434
+```
+
+Model name is Taskfile var `OLLAMA_MODEL` (default `qwen2.5:14b`). If `ollama:check` warns it is missing: `ollama pull qwen2.5:14b`.
 
 ## Simulate opened PRs
 

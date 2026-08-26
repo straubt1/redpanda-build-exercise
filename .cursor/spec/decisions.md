@@ -20,7 +20,7 @@ Status vocabulary:
 | Source | GitHub public events: `GET https://api.github.com/events` |
 | Auth | `GITHUB_TOKEN` (required). User-Agent required on all GitHub calls (Connect and Go). |
 | Language | Go |
-| LLM runtime | Ollama, local |
+| LLM runtime | Ollama on the **host** (not a Compose service). The app container reaches it at `host.docker.internal:11434`. |
 | Serve | Simple web UI. No framework requirement (`net/http` is enough). |
 | Result store | Postgres only. The worker writes. Serve reads Postgres. No result topic for v1. |
 | Dev CLI | [Task](https://taskfile.dev/) (`Taskfile.yml` at repo root). Leaf tasks for inspect/run; composites stitch them later. `.reference/Taskfile.yml` is not the spec. |
@@ -70,7 +70,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Go entrypoint | `cmd/app/main.go` | One process: Kafka consumer **and** HTTP serve |
 | HTTP port | `8080` | |
 | GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 4** opened PRs per sweep (`batch_index() >= 4` → drop) before cache. Cache still drops duplicate `id`s. |
-| Ollama model | `llama3.2` | Must be pulled in Compose or documented. Change if quality is poor. |
+| Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
 | Lockfile names | See list below | Widen later via the same skip-LLM list |
@@ -81,7 +81,8 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Inspect GitHub | `task github:events` (`VERBOSE=1` for full page) | One curl; counts + opened PRs |
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
 | Inspect Postgres UI | pgAdmin `http://localhost:8082` | No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
-| jq | Required for `github:events` / `github:pull` | Fail clearly if missing |
+| Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `127.0.0.1:11434`. Logs: `.local/ollama.log`. |
+| jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
 
 ### Lockfile set (skip-LLM)
 
@@ -102,8 +103,9 @@ State these if asked in a walkthrough.
 5. Title, author, and action may be stored and shown; they are not the classification input for the model.
 6. “Several prompts” means **distinct steps** (extract vs classify), not three ways of asking for the same label.
 7. One Go binary for worker + serve is acceptable for a local demo; split processes if serve and worker need different scale (not v1).
-8. Ollama speaks an OpenAI-compatible HTTP API from the Go service. Connect must not call it.
+8. Ollama speaks an OpenAI-compatible HTTP API from the Go service. Connect must not call it. The model process is on the host; Compose does not run `ollama/ollama`.
 9. Public GitHub is a **demo dataset** standing in for an internal “opened PRs in our orgs” feed (customer story still open).
+10. Docker Desktop on Mac can reach host Ollama at `host.docker.internal:11434`.
 
 ---
 
@@ -113,7 +115,7 @@ Do not silently resolve these into architecture-changing behavior.
 
 ### Must decide before a polished demo (not before Phase 1)
 
-- Exact Ollama model if `llama3.2` is too weak or too slow on diffs
+- Exact Ollama model if `qwen2.5:14b` is too weak or too slow on diffs
 - Confidence: number-only vs **control-flow** (second extract, extra fetch, or force `unknown`)
 - What the UI highlights (`security` first? filter? confidence sort?)
 - Customer paragraph: who uses this, what decision a row drives, cost of wrong/missing
@@ -156,3 +158,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Postgres image **18** (latest stable). Local volume wiped on the bump.
 - 2026-08-26 — `/events` has no PR `title`. Connect does not map it; worker GET pull supplies title for Postgres.
 - 2026-08-26 — Phase 3: enrichment evidence lives in `rationale` (`body_len` + filename/status). No `files_json` column. Body and files stay in memory for later phases.
+- 2026-08-26 — Ollama runs on the **host**, not Compose. Model working default `qwen2.5:14b` (`OLLAMA_MODEL` in Taskfile). Tasks: `ollama:up`, `ollama:logs`, `ollama:down`, `ollama:check`.
+- 2026-08-26 — App reaches host Ollama at `host.docker.internal:11434`. Do not `extra_hosts` that name to `host-gateway` on Docker Desktop (it became `172.17.0.1` and connection refused).

@@ -1,4 +1,4 @@
-# Phase 0–3: Postgres + Redpanda + Connect + app (enrich). Ollama is a later phase.
+# Phase 0–6: Postgres + Redpanda + Connect + app. Ollama runs on the host, not in Compose.
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
@@ -99,6 +99,8 @@ services:
       POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       GITHUB_USER_AGENT: redpanda-build-exercise
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:14b}
     restart: unless-stopped
 
 volumes:

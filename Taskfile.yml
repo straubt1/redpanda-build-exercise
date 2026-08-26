@@ -7,6 +7,9 @@ vars:
   TOPIC: github.pr.opened
   USER_AGENT: redpanda-build-exercise
   SIM_DIR: sim/pr-opened
+  OLLAMA_MODEL: qwen2.5:14b
+  OLLAMA_LOG: .local/ollama.log
+  OLLAMA_PID: .local/ollama.pid
 
 tasks:
   default:
@@ -143,6 +146,126 @@ tasks:
         echo "$pull" | jq '{title, html_url, body_len: ((.body // "") | length), user: .user.login}'
         echo "=== files (max 20; patch truncated to 4000 chars) ==="
         echo "$files" | jq '[.[0:20][] | {filename, status, patch_len: ((.patch // "") | length), patch: ((.patch // "")[0:4000])}]'
+
+  ollama:up:
+    desc: Start host ollama serve in the background
+    cmds:
+      - |
+        set -euo pipefail
+        if ! command -v ollama >/dev/null 2>&1; then
+          echo "install Ollama from https://ollama.com" >&2
+          exit 1
+        fi
+        base="{{.OLLAMA_URL}}"
+        if [ -z "$base" ] && [ -n "${OLLAMA_HOST:-}" ]; then
+          case "${OLLAMA_HOST}" in
+            http://*|https://*) base="${OLLAMA_HOST}" ;;
+            *) base="http://${OLLAMA_HOST}" ;;
+          esac
+        fi
+        base="${base:-http://127.0.0.1:11434}"
+        base="${base%/}"
+        mkdir -p .local
+        log="{{.OLLAMA_LOG}}"
+        pidf="{{.OLLAMA_PID}}"
+        if curl -sfS --max-time 2 "${base}/api/version" >/dev/null; then
+          echo "Ollama already running at ${base}"
+        else
+          touch "$log"
+          nohup ollama serve >>"$log" 2>&1 &
+          echo $! >"$pidf"
+          echo "started ollama serve pid=$(cat "$pidf") log=$log"
+          ok=0
+          for _ in $(seq 1 40); do
+            if curl -sfS --max-time 1 "${base}/api/version" >/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 0.25
+          done
+          if [ "$ok" != 1 ]; then
+            echo "Ollama did not become ready — task ollama:logs" >&2
+            exit 1
+          fi
+        fi
+      - task: ollama:check
+
+  ollama:logs:
+    desc: Tail host ollama serve logs ({{.OLLAMA_LOG}})
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p .local
+        touch "{{.OLLAMA_LOG}}"
+        echo "tailing {{.OLLAMA_LOG}} (Ctrl-C to stop)"
+        echo "empty if Ollama was started outside task ollama:up (e.g. Ollama.app)"
+        tail -f "{{.OLLAMA_LOG}}"
+
+  ollama:down:
+    desc: Stop host Ollama (process listening on 11434)
+    cmds:
+      - |
+        set -euo pipefail
+        pidf="{{.OLLAMA_PID}}"
+        if [ -f "$pidf" ]; then
+          pid=$(cat "$pidf")
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" || true
+            echo "sent SIGTERM to pid $pid"
+          fi
+          rm -f "$pidf"
+        fi
+        for _ in $(seq 1 20); do
+          pids=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null || true)
+          if [ -z "$pids" ]; then
+            echo "Ollama is not listening on 11434"
+            exit 0
+          fi
+          # shellcheck disable=SC2086
+          kill $pids 2>/dev/null || true
+          sleep 0.2
+        done
+        pids=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+          echo "still listening on 11434 (pids: $pids) — Ollama.app may have restarted it" >&2
+          exit 1
+        fi
+
+  ollama:check:
+    desc: Verify Ollama is reachable (version + models)
+    cmds:
+      - |
+        set -euo pipefail
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "install jq (e.g. brew install jq)" >&2
+          exit 1
+        fi
+        base="{{.OLLAMA_URL}}"
+        if [ -z "$base" ] && [ -n "${OLLAMA_HOST:-}" ]; then
+          case "${OLLAMA_HOST}" in
+            http://*|https://*) base="${OLLAMA_HOST}" ;;
+            *) base="http://${OLLAMA_HOST}" ;;
+          esac
+        fi
+        base="${base:-http://127.0.0.1:11434}"
+        base="${base%/}"
+        model="{{.OLLAMA_MODEL}}"
+        if ! ver=$(curl -sfS --max-time 3 "${base}/api/version"); then
+          echo "Ollama is not reachable at ${base}" >&2
+          echo "Start it with: task ollama:up" >&2
+          echo "Override URL: task ollama:check OLLAMA_URL=http://127.0.0.1:11434" >&2
+          exit 1
+        fi
+        echo "=== version (${base}) ==="
+        echo "$ver" | jq .
+        tags=$(curl -sfS --max-time 5 "${base}/api/tags")
+        echo "=== models ==="
+        echo "$tags" | jq '{models: [.models[]?.name]}'
+        if echo "$tags" | jq -e --arg m "$model" '[.models[]?.name] | any(startswith($m))' >/dev/null; then
+          echo "model ${model} is present"
+        else
+          echo "WARNING: working-default model ${model} is not pulled — ollama pull ${model}" >&2
+        fi
 
   topic:consume:
     desc: List topics and consume {{.TOPIC}} (FOLLOW=1 to tail; N=5 default)

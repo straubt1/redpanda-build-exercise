@@ -11,6 +11,8 @@ import (
 	"github.com/straubt1/redpanda-build-exercise/internal/config"
 	"github.com/straubt1/redpanda-build-exercise/internal/githubclient"
 	"github.com/straubt1/redpanda-build-exercise/internal/kafka"
+	"github.com/straubt1/redpanda-build-exercise/internal/llm"
+	"github.com/straubt1/redpanda-build-exercise/internal/reason"
 	"github.com/straubt1/redpanda-build-exercise/internal/skipllm"
 	"github.com/straubt1/redpanda-build-exercise/internal/store"
 )
@@ -40,8 +42,10 @@ func Run(ctx context.Context, cfg config.Config) error {
 	defer c.Close()
 
 	gh := githubclient.New(cfg.GitHubToken, cfg.GitHubUserAgent)
+	ollama := llm.New(cfg.OllamaURL, cfg.OllamaModel)
 
-	applog.Info.Printf("consuming topic=%s group=%s brokers=%v", cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers)
+	applog.Info.Printf("consuming topic=%s group=%s brokers=%v ollama=%s model=%s",
+		cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers, cfg.OllamaURL, cfg.OllamaModel)
 
 	for {
 		records, err := c.Poll(ctx)
@@ -52,7 +56,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 		for _, rec := range records {
-			if err := handle(ctx, db, gh, rec.Value); err != nil {
+			if err := handle(ctx, db, gh, ollama, rec.Value); err != nil {
 				return fmt.Errorf("upsert offset=%d: %w", rec.Offset, err)
 			}
 			if err := c.Commit(ctx, rec); err != nil {
@@ -62,7 +66,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 }
 
-func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, raw []byte) error {
+func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte) error {
 	var msg Work
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		applog.Err.Printf("skip bad json: %v", err)
@@ -108,7 +112,7 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, raw [
 		row.Author = enr.Author
 	}
 	row.Error = ""
-	applyClassification(&row, enr)
+	applyClassification(ctx, ollama, &row, enr)
 
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
@@ -118,7 +122,7 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, raw [
 	return nil
 }
 
-func applyClassification(row *store.Row, enr *githubclient.Enrichment) {
+func applyClassification(ctx context.Context, ollama reason.Completer, row *store.Row, enr *githubclient.Enrichment) {
 	if strings.TrimSpace(enr.Body) == "" && len(enr.Files) == 0 {
 		row.Rationale = "empty body and no files"
 		return
@@ -131,9 +135,23 @@ func applyClassification(row *store.Row, enr *githubclient.Enrichment) {
 		row.Category = cat
 		row.Source = "rule"
 		row.Rationale = skipllm.Rationale(cat) + "; " + enrichmentRationale(enr)
+		applog.Info.Printf("skip-llm event_id=%s category=%s", row.EventID, cat)
 		return
 	}
-	row.Rationale = enrichmentRationale(enr)
+
+	files := make([]reason.FileInput, 0, len(enr.Files))
+	for _, f := range enr.Files {
+		files = append(files, reason.FileInput{Filename: f.Filename, Status: f.Status, Patch: f.Patch})
+	}
+	out := reason.ClassifyPR(ctx, ollama, reason.Input{Title: enr.Title, Body: enr.Body, Files: files}, row.EventID)
+	row.Category = out.Category
+	row.Source = out.Source
+	row.Rationale = out.Rationale
+	row.Error = out.Error
+	row.Confidence = out.Confidence
+	row.AffectedArea = out.AffectedArea
+	applog.Info.Printf("llm done event_id=%s category=%s source=%s extract_retries=%d classify_retries=%d",
+		row.EventID, out.Category, out.Source, out.ExtractRetries, out.ClassifyRetries)
 }
 
 func enrichmentRationale(enr *githubclient.Enrichment) string {
