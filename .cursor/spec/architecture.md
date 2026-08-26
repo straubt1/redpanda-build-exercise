@@ -61,7 +61,7 @@ GET https://api.github.com/events
         │
         ▼
  project: event_id, repo, pr_number, pr_url,
-          title, author, action, created_at
+          author, action, created_at
         │
         ▼
  cap 4 per sweep (batch_index)
@@ -84,7 +84,9 @@ GET https://api.github.com/events
 
 ### Work topic message (JSON)
 
-All fields required except `title` / `author` / `created_at` may be empty strings if missing.
+`/events` PullRequestEvent payloads are truncated: **no `title`**, and often no `html_url`. Do not map title in Connect. The worker fills `title` from `GET /repos/{repo}/pulls/{pr_number}`.
+
+`author` / `created_at` may be empty strings if missing.
 
 ```json
 {
@@ -92,22 +94,20 @@ All fields required except `title` / `author` / `created_at` may be empty string
   "repo": "owner/name",
   "pr_number": 42,
   "pr_url": "https://github.com/owner/name/pull/42",
-  "title": "from event payload",
   "author": "login",
   "action": "opened",
   "created_at": "2026-08-26T17:06:33Z"
 }
 ```
 
-Mapping (assumption — verify against a live event during Phase 1):
+Mapping (verified against a live `/events` PullRequestEvent):
 
 | Output | Path |
 | --- | --- |
 | `event_id` | `.id` |
 | `repo` | `.repo.name` |
-| `pr_number` | `.payload.pull_request.number` |
-| `pr_url` | `.payload.pull_request.html_url` |
-| `title` | `.payload.pull_request.title` |
+| `pr_number` | `.payload.pull_request.number` (or `.payload.number`) |
+| `pr_url` | `.payload.pull_request.html_url` if present, else `.payload.pull_request.url`, else construct `https://github.com/{repo}/pull/{n}` |
 | `author` | `.actor.login` or `.payload.pull_request.user.login` |
 | `action` | `.payload.action` |
 | `created_at` | `.created_at` (already ISO-8601; do not pass raw epoch into Postgres) |

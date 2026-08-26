@@ -61,7 +61,6 @@ pipeline:
             "repo": this.repo.name.or(""),
             "pr_number": this.payload.pull_request.number.or(this.payload.number),
             "pr_url": this.payload.pull_request.url.or(""),
-            "title": this.payload.pull_request.title.or(""),
             "author": this.actor.login.or(this.payload.pull_request.user.login.or("")),
             "action": this.payload.action.or(""),
             "created_at": this.created_at.or("")

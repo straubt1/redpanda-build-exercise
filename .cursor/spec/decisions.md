@@ -154,3 +154,4 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Connect: max **4** opened-PR messages per generate sweep (`batch_index()`), then cache.
 - 2026-08-26 — pgAdmin on host **8082**, started with `infra:up` like Console. Desktop mode (`SERVER_MODE=False`) skips the login page.
 - 2026-08-26 — Postgres image **18** (latest stable). Local volume wiped on the bump.
+- 2026-08-26 — `/events` has no PR `title`. Connect does not map it; worker GET pull supplies title for Postgres.
