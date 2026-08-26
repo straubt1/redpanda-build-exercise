@@ -10,7 +10,7 @@ GET https://api.github.com/events
         ▼
 ┌──────────────────────────────────────┐
 │ CONNECT                              │
-│  poll + headers (token, User-Agent)  │
+│  generate 30s → GET /events (multi-page) │
 │  explode JSON array → one msg/event  │
 │  filter PR + action allowlist        │
 │  project small schema                │
@@ -44,10 +44,13 @@ GET https://api.github.com/events
 **Job:** plumbing. Rules only.
 
 ```text
- poll GET /events
+ generate every 30s → multiple pages
         │
         ▼
- raw JSON array (~30 events, mixed types)
+ GET /events?per_page=100&page=N  (headers; rate-limit the sweep)
+        │
+        ▼
+ raw JSON array per page (~30–100 events, mixed types)
         │
         ▼
  unarchive / explode to one event per message
@@ -61,6 +64,9 @@ GET https://api.github.com/events
           title, author, action, created_at
         │
         ▼
+ cap 4 per sweep (batch_index)
+        │
+        ▼
  cache key = event_id  (seen → drop)
         │
         ▼
@@ -72,7 +78,7 @@ GET https://api.github.com/events
 - Docs: [GitHub REST Events](https://docs.github.com/en/rest/activity/events) and [PullRequestEvent](https://docs.github.com/en/rest/using-the-rest-api/github-event-types#pullrequestevent).
 - Response is an **array**. If Connect leaves it as one blob, filter/cache/produce will be wrong. Explode first.
 - Headers: `Authorization: Bearer ${GITHUB_TOKEN}`, `User-Agent` (non-empty; GitHub rejects empty), `Accept: application/vnd.github+json`.
-- Rate limit: 60/hr anonymous, 5000/hr with token. Filter **before** the worker so most events never cause extra GETs.
+- Rate limit: 60/hr anonymous, 5000/hr with token. Connect issues **multiple** GETs per 30s sweep so `/events` returns more of the window. Filter **before** the worker so most events never cause extra GETs.
 - `/events` is a poll source: the same `id` reappears. Cache is mandatory given our decision.
 - Do not use Connect `branch` + `ollama_chat` / `openai_chat_completion` for this exercise. The hint in the takehome about `branch` for LLM calls is for a different topology; we rejected it.
 

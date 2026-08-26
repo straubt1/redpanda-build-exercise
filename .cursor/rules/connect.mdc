@@ -6,23 +6,22 @@ alwaysApply: false
 
 # Connect (plumbing only)
 
-Poll `GET https://api.github.com/events` with `GITHUB_TOKEN`, a non-empty `User-Agent`, and `Accept: application/vnd.github+json`.
+`generate` every 30s, then `http` GET `https://api.github.com/events?per_page=100&page=N` across **multiple pages** so each sweep covers more of the timeline. Headers: `GITHUB_TOKEN`, a non-empty `User-Agent`, `Accept: application/vnd.github+json`. Rate-limit the GETs so that sweep can finish inside the interval.
 
-- Explode the JSON **array** into one message per event before filter.
+- Explode each page JSON **array** into one message per event before filter.
 - Keep `PullRequestEvent` where `payload.action` is in an allowlist (`opened` only for v1).
+- Cap **4** surviving messages per generate sweep (`batch_index() >= 4` → `deleted()`), then cache.
 - Project the work-topic schema in `.cursor/spec/architecture.md`. One Bloblang mapping; `mapping` rebuilds `root`.
 - Cache on GitHub event `id`. Produce `github.pr.opened`.
 - Never call Ollama / OpenAI from Connect.
 
 ```bloblang
-# ❌ BAD — one field drops the rest
-root.event_id = this.id
+# ❌ BAD — `allow` is this.allow; let vars are $name
+!allow.contains(this.payload.action)
 
 # ✅ GOOD
-root.event_id = this.id
-root.repo = this.repo.name
-root.pr_number = this.payload.pull_request.number
-root.action = this.payload.action
+let allow = ["opened"]
+!$allow.contains(this.payload.action.or(""))
 ```
 
 Details: `.cursor/spec/architecture.md` (Connect section).

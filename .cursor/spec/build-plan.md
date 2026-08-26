@@ -61,7 +61,7 @@ Implement Phase 1 only from .cursor/spec/.
 Add Redpanda Connect (docker.redpanda.com/redpandadata/connect) to Compose.
 Write connect/ingest.yaml:
 
-- HTTP poll GET https://api.github.com/events
+- generate every 30s; http GET multiple pages of https://api.github.com/events?per_page=100 to take more of the timeline
 - Headers: Bearer GITHUB_TOKEN, User-Agent, Accept application/vnd.github+json
 - Explode the JSON array into one message per event
 - Keep PullRequestEvent where payload.action is in allowlist ["opened"] (allowlist easy to extend)

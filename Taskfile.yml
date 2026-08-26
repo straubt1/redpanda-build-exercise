@@ -156,6 +156,25 @@ tasks:
         fi
         echo "Reset: Postgres sim-% rows deleted, topic {{.TOPIC}} recreated"
 
+  sim:reset:all:
+    desc: Delete all pr_triages rows and recreate the work topic (all messages)
+    cmds:
+      - |
+        set -euo pipefail
+        BROKERS="-X brokers=redpanda:9092"
+        {{.COMPOSE}} exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages;"
+        connect_was_up=0
+        if [ -n "$({{.COMPOSE}} ps -q --status running connect 2>/dev/null || true)" ]; then
+          connect_was_up=1
+          {{.COMPOSE}} stop connect
+        fi
+        {{.COMPOSE}} exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
+        {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
+        if [ "$connect_was_up" = 1 ]; then
+          {{.COMPOSE}} start connect
+        fi
+        echo "Reset all: Postgres pr_triages emptied, topic {{.TOPIC}} recreated"
+
   sim:produce:
     desc: Produce {{.SIM_DIR}}/*.json onto the work topic (no GitHub API)
     cmds:

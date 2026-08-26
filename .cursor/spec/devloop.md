@@ -45,7 +45,7 @@ Pattern: `namespace:verb`. At most **two** segments, except a destructive qualif
 
 ## Inspect GitHub payloads
 
-Connect polls `GET https://api.github.com/events`. That body is a **JSON array of mixed types**. The topic only shows what **survived** the filter. Inspect the API to see whether the firehose had opened PRs.
+Connect `generate`s every 30s and GETs **multiple** pages of `/events?per_page=100` so each sweep covers more of the firehose. Each body is a **JSON array of mixed types**. The topic only shows what **survived** the filter. Inspect the API (`task github:events`) to see whether the firehose had opened PRs.
 
 Needs `GITHUB_TOKEN`, non-empty `User-Agent`, and **`jq`** (fail with “install jq” if missing).
 
@@ -123,6 +123,7 @@ Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced w
 | --- | --- |
 | `sim:produce` | Write fixture files onto `github.pr.opened` |
 | `sim:reset` | `DELETE` Postgres `event_id LIKE 'sim-%'`; **recreate** the work topic (wipes **all** topic messages); restart Connect if it was running |
+| `sim:reset:all` | `DELETE FROM pr_triages` (every row); **recreate** the work topic; restart Connect if it was running |
 | `sim:replay` | `sim:reset` then `sim:produce` |
 
 Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.

@@ -1,0 +1,53 @@
+{
+  "id": "13915283357",
+  "type": "PullRequestEvent",
+  "actor": {
+    "id": 85644782,
+    "login": "trunk-io[bot]",
+    "display_login": "trunk-io",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/trunk-io[bot]",
+    "avatar_url": "https://avatars.githubusercontent.com/u/85644782?"
+  },
+  "repo": {
+    "id": 235901813,
+    "name": "PostHog/posthog",
+    "url": "https://api.github.com/repos/PostHog/posthog"
+  },
+  "payload": {
+    "action": "opened",
+    "number": 89663,
+    "pull_request": {
+      "url": "https://api.github.com/repos/PostHog/posthog/pulls/89663",
+      "id": 4370085101,
+      "number": 89663,
+      "head": {
+        "ref": "trunk-merge/pr-89486/7a83af02-c0b1-4178-96e4-5f8dbc443660",
+        "sha": "ead3095670bdb1f4e175c689396e57f6e3de9a64",
+        "repo": {
+          "id": 235901813,
+          "url": "https://api.github.com/repos/PostHog/posthog",
+          "name": "posthog"
+        }
+      },
+      "base": {
+        "ref": "master",
+        "sha": "958fad17da7f73ea1e2b2df984fe20adac840ed2",
+        "repo": {
+          "id": 235901813,
+          "url": "https://api.github.com/repos/PostHog/posthog",
+          "name": "posthog"
+        }
+      }
+    }
+  },
+  "public": true,
+  "created_at": "2026-08-26T19:20:12Z",
+  "org": {
+    "id": 60330232,
+    "login": "PostHog",
+    "gravatar_id": "",
+    "url": "https://api.github.com/orgs/PostHog",
+    "avatar_url": "https://avatars.githubusercontent.com/u/60330232?"
+  }
+}

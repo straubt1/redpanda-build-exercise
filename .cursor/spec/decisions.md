@@ -69,7 +69,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Connect config path | `connect/ingest.yaml` | |
 | Go entrypoint | `cmd/app/main.go` | One process: Kafka consumer **and** HTTP serve |
 | HTTP port | `8080` | |
-| GitHub poll | First page of `/events` only, interval **30s** | Do not paginate the firehose in v1 |
+| GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 4** opened PRs per sweep (`batch_index() >= 4` → drop) before cache. Cache still drops duplicate `id`s. |
 | Ollama model | `llama3.2` | Must be pulled in Compose or documented. Change if quality is poor. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
@@ -149,3 +149,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Working defaults filled so a from-scratch rebuild is not blocked (topic, table, poll, retries, file budget, model name).
 - 2026-08-26 — Spec moved to `.cursor/spec/`; thin Cursor rules in `.cursor/rules/` point at it.
 - 2026-08-26 — Taskfile: `namespace:verb`, vars for variants, scripts may be multi-step (no task sprawl). See `devloop.md`.
+- 2026-08-26 — Connect poll: `generate` + `http` processor, multiple `/events` pages every 30s to cover more of the timeline. Not `http_client` on a single URL.
+- 2026-08-26 — Connect: max **4** opened-PR messages per generate sweep (`batch_index()`), then cache.
