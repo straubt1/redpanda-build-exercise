@@ -7,17 +7,24 @@ import (
 )
 
 type Config struct {
-	KafkaBrokers []string
-	KafkaTopic   string
-	KafkaGroup   string
-	PostgresDSN  string
+	KafkaBrokers    []string
+	KafkaTopic      string
+	KafkaGroup      string
+	PostgresDSN     string
+	GitHubToken     string
+	GitHubUserAgent string
 }
 
 func FromEnv() (Config, error) {
 	cfg := Config{
-		KafkaTopic:  getenv("KAFKA_TOPIC", "github.pr.opened"),
-		KafkaGroup:  getenv("KAFKA_GROUP", "pr-triage-worker"),
-		PostgresDSN: getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
+		KafkaTopic:      getenv("KAFKA_TOPIC", "github.pr.opened"),
+		KafkaGroup:      getenv("KAFKA_GROUP", "pr-triage-worker"),
+		PostgresDSN:     getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
+		GitHubToken:     os.Getenv("GITHUB_TOKEN"),
+		GitHubUserAgent: getenv("GITHUB_USER_AGENT", "redpanda-build-exercise"),
+	}
+	if cfg.GitHubToken == "" {
+		return Config{}, fmt.Errorf("GITHUB_TOKEN is empty")
 	}
 
 	for _, b := range strings.Split(getenv("KAFKA_BROKERS", "localhost:19092"), ",") {

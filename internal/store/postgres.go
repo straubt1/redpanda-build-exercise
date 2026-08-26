@@ -16,12 +16,14 @@ type Row struct {
 	EventID    string
 	Repo       string
 	PRNumber   int
+	Title      string
 	PRURL      string
 	Author     string
 	Action     string
 	Category   string
 	Source     string
 	Rationale  string
+	Error      string
 	ReceivedAt *time.Time
 }
 
@@ -44,21 +46,23 @@ func (s *Store) Close() {
 func (s *Store) Upsert(ctx context.Context, row Row) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO pr_triages (
-  event_id, repo, pr_number, pr_url, author, action,
-  category, source, rationale, received_at, classified_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+  event_id, repo, pr_number, title, pr_url, author, action,
+  category, source, rationale, error, received_at, classified_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
 ON CONFLICT (event_id) DO UPDATE SET
   repo = EXCLUDED.repo,
   pr_number = EXCLUDED.pr_number,
+  title = EXCLUDED.title,
   pr_url = EXCLUDED.pr_url,
   author = EXCLUDED.author,
   action = EXCLUDED.action,
   category = EXCLUDED.category,
   source = EXCLUDED.source,
   rationale = EXCLUDED.rationale,
+  error = EXCLUDED.error,
   received_at = EXCLUDED.received_at,
   classified_at = now()
-`, row.EventID, row.Repo, row.PRNumber, row.PRURL, row.Author, row.Action,
-		row.Category, row.Source, row.Rationale, row.ReceivedAt)
+`, row.EventID, row.Repo, row.PRNumber, row.Title, row.PRURL, row.Author, row.Action,
+		row.Category, row.Source, row.Rationale, row.Error, row.ReceivedAt)
 	return err
 }

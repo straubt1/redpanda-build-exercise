@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/straubt1/redpanda-build-exercise/internal/applog"
 	"github.com/straubt1/redpanda-build-exercise/internal/config"
+	"github.com/straubt1/redpanda-build-exercise/internal/githubclient"
 	"github.com/straubt1/redpanda-build-exercise/internal/kafka"
 	"github.com/straubt1/redpanda-build-exercise/internal/store"
 )
@@ -36,6 +38,8 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	defer c.Close()
 
+	gh := githubclient.New(cfg.GitHubToken, cfg.GitHubUserAgent)
+
 	applog.Info.Printf("consuming topic=%s group=%s brokers=%v", cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers)
 
 	for {
@@ -47,7 +51,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 		for _, rec := range records {
-			if err := handle(ctx, db, rec.Value); err != nil {
+			if err := handle(ctx, db, gh, rec.Value); err != nil {
 				return fmt.Errorf("upsert offset=%d: %w", rec.Offset, err)
 			}
 			if err := c.Commit(ctx, rec); err != nil {
@@ -57,7 +61,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 }
 
-func handle(ctx context.Context, db *store.Store, raw []byte) error {
+func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, raw []byte) error {
 	var msg Work
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		applog.Err.Printf("skip bad json: %v", err)
@@ -83,9 +87,43 @@ func handle(ctx context.Context, db *store.Store, raw []byte) error {
 		row.ReceivedAt = &t
 	}
 
+	enr, err := gh.Fetch(ctx, msg.Repo, msg.PRNumber)
+	if err != nil {
+		status := githubclient.StatusOf(err)
+		applog.Err.Printf("github fetch event_id=%s repo=%s pr=%d status=%d: %v", msg.EventID, msg.Repo, msg.PRNumber, status, err)
+		row.Rationale = "github fetch failed"
+		row.Error = err.Error()
+		if err := db.Upsert(ctx, row); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	row.Title = enr.Title
+	if enr.HTMLURL != "" {
+		row.PRURL = enr.HTMLURL
+	}
+	if enr.Author != "" {
+		row.Author = enr.Author
+	}
+	row.Error = ""
+	row.Rationale = enrichmentRationale(enr)
+
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
 	}
-	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d", msg.EventID, msg.Repo, msg.PRNumber)
+	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d title=%q body_len=%d files=%d",
+		msg.EventID, msg.Repo, msg.PRNumber, row.Title, len(enr.Body), len(enr.Files))
 	return nil
+}
+
+func enrichmentRationale(enr *githubclient.Enrichment) string {
+	if strings.TrimSpace(enr.Body) == "" && len(enr.Files) == 0 {
+		return "empty body and no files"
+	}
+	parts := make([]string, 0, len(enr.Files))
+	for _, f := range enr.Files {
+		parts = append(parts, f.Filename+" ("+f.Status+")")
+	}
+	return fmt.Sprintf("body_len=%d files=%d: %s", len(enr.Body), len(enr.Files), strings.Join(parts, ", "))
 }

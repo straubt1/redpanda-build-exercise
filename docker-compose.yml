@@ -1,4 +1,4 @@
-# Phase 0–2: Postgres + Redpanda + Connect + app. Ollama is a later phase.
+# Phase 0–3: Postgres + Redpanda + Connect + app (enrich). Ollama is a later phase.
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
@@ -97,6 +97,8 @@ services:
       KAFKA_TOPIC: github.pr.opened
       KAFKA_GROUP: pr-triage-worker
       POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_USER_AGENT: redpanda-build-exercise
     restart: unless-stopped
 
 volumes:

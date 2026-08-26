@@ -119,7 +119,13 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 
 | Task | Does |
 | --- | --- |
-| `app:up` | `deps: [infra:up]`, `compose up -d --build app` (consume + upsert) |
+| `app:up` | `deps: [infra:up]`, require token, `compose up -d --build app` (consume + upsert) |
+
+### Phase 3
+
+| Task | Does |
+| --- | --- |
+| `github:pull` | `REPO=owner/name PR=42`: pull JSON + files (max 20, patch 4000 chars) |
 
 ### Sim (local fixtures, not GitHub)
 
@@ -137,7 +143,6 @@ Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.
 ### Later (do not implement early)
 
 - Phase 2+: `test` (`go test ./...`)
-- Phase 3: `github:pull`
 - Phase 8: `up` (full compose `--build`), `down`, `smoke` (healthz + row count). `logs` already covers the stack.
 
 ---

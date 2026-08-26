@@ -26,7 +26,7 @@ tasks:
           echo ".env already exists"
         fi
         if [ -z "${GITHUB_TOKEN:-}" ]; then
-          echo "WARNING: GITHUB_TOKEN is empty (needed for task github:events and Connect)"
+          echo "WARNING: GITHUB_TOKEN is empty (needed for github:events, github:pull, Connect, and the app)"
         else
           echo "GITHUB_TOKEN is set"
         fi
@@ -56,9 +56,15 @@ tasks:
         echo "Connect started — next: task topic:consume   or   task logs SERVICE=connect"
 
   app:up:
-    desc: Start Go worker (consume topic, upsert Postgres)
+    desc: Start Go worker (consume, enrich from GitHub, upsert Postgres)
     deps: [infra:up]
     cmds:
+      - |
+        set -euo pipefail
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GITHUB_TOKEN must be set in .env for the worker to fetch PRs" >&2
+          exit 1
+        fi
       - "{{.COMPOSE}} up -d --build app"
       - |
         echo "App started — next: task logs SERVICE=app  or  task db:psql"
@@ -99,6 +105,39 @@ tasks:
           echo "=== full page ==="
           echo "$body" | jq .
         fi
+
+  github:pull:
+    desc: GET pull + files (REPO=owner/name PR=42); files capped like the worker
+    cmds:
+      - |
+        set -euo pipefail
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "install jq (e.g. brew install jq)" >&2
+          exit 1
+        fi
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GITHUB_TOKEN is empty — set it in .env" >&2
+          exit 1
+        fi
+        if [ -z "{{.REPO}}" ] || [ -z "{{.PR}}" ]; then
+          echo "usage: task github:pull REPO=owner/name PR=42" >&2
+          exit 1
+        fi
+        ua="{{.USER_AGENT}}"
+        pull=$(curl -sS \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "User-Agent: $ua" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/{{.REPO}}/pulls/{{.PR}}")
+        files=$(curl -sS \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "User-Agent: $ua" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/{{.REPO}}/pulls/{{.PR}}/files?per_page=20")
+        echo "=== pull ==="
+        echo "$pull" | jq '{title, html_url, body_len: ((.body // "") | length), user: .user.login}'
+        echo "=== files (max 20; patch truncated to 4000 chars) ==="
+        echo "$files" | jq '[.[0:20][] | {filename, status, patch_len: ((.patch // "") | length), patch: ((.patch // "")[0:4000])}]'
 
   topic:consume:
     desc: List topics and consume {{.TOPIC}} (FOLLOW=1 to tail; N=5 default)
