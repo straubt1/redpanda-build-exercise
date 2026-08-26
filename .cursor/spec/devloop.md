@@ -131,7 +131,7 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 
 | Task | Does |
 | --- | --- |
-| `test` | `go test ./...` (skip-LLM rules; later parse tests). `CLI_ARGS` for `-run` |
+| `test` | `go test ./...` (skip-LLM + parse/normalize). `CLI_ARGS` for `-run` |
 
 ### Sim (local fixtures, not GitHub)
 
