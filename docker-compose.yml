@@ -1,4 +1,4 @@
-# Phase 0: Postgres + Redpanda only. Connect / Ollama / app are later phases.
+# Phase 0–1: Postgres + Redpanda + Connect. Ollama / app are later phases.
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
@@ -36,6 +36,31 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  connect:
+    image: docker.redpanda.com/redpandadata/connect:4.106.0
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    volumes:
+      - ./connect/ingest.yaml:/connect.yaml:ro
+    command: ["run", "/connect.yaml"]
+    restart: unless-stopped
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.10.0
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
 
 volumes:
   postgres_data:

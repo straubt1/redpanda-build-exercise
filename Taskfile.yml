@@ -33,17 +33,31 @@ tasks:
   infra:up:
     desc: Start Postgres + Redpanda; create the work topic
     cmds:
-      - "{{.COMPOSE}} up -d --wait postgres redpanda"
+      - "{{.COMPOSE}} up -d --wait postgres redpanda console"
       - |
         set -euo pipefail
         {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} -X brokers=redpanda:9092 || true
         {{.COMPOSE}} exec -T redpanda rpk topic list -X brokers=redpanda:9092
-        echo "Infra is up — Kafka localhost:19092, Postgres localhost:5432, topic {{.TOPIC}}"
+        echo "Infra is up — Kafka localhost:19092, Postgres localhost:5432, Console http://localhost:8081, topic {{.TOPIC}}"
+
+  connect:up:
+    desc: Start Connect ingest (requires GITHUB_TOKEN)
+    deps: [infra:up]
+    cmds:
+      - |
+        set -euo pipefail
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GITHUB_TOKEN must be set in .env for Connect to poll GitHub" >&2
+          exit 1
+        fi
+      - "{{.COMPOSE}} up -d connect"
+      - |
+        echo "Connect started — next: task topic:consume   or   task logs SERVICE=connect"
 
   infra:down:
     desc: Stop infra (keeps volumes)
     cmds:
-      - "{{.COMPOSE}} stop redpanda postgres"
+      - "{{.COMPOSE}} stop connect console redpanda postgres"
 
   infra:down:clean:
     desc: Stop infra and delete volumes (wipes Postgres data and topic log)

@@ -1,0 +1,67 @@
+# GitHub /events → opened PRs → topic github.pr.opened.
+# No LLM here. Reasoning is the Go worker (later phases).
+
+rate_limit_resources:
+  - label: github_poll
+    local:
+      count: 1
+      interval: 30s
+
+cache_resources:
+  - label: seen_events
+    memory:
+      default_ttl: 24h
+
+input:
+  http_client:
+    url: https://api.github.com/events?per_page=100
+    verb: GET
+    headers:
+      Accept: application/vnd.github+json
+      User-Agent: redpanda-build-exercise
+      Authorization: Bearer ${GITHUB_TOKEN}
+      X-GitHub-Api-Version: "2022-11-28"
+    rate_limit: github_poll
+    timeout: 30s
+    retries: 3
+    backoff_on:
+      - 429
+      - 503
+
+pipeline:
+  processors:
+    - unarchive:
+        format: json_array
+    - mapping: |
+        root = if errored() { deleted() } else { this }
+    # Action allowlist — add strings here to ingest more PR events without a new pipeline.
+    - mapping: |
+        let allow = ["opened"]
+        root = if this.type != "PullRequestEvent" || !allow.contains(this.payload.action) {
+          deleted()
+        } else {
+          {
+            "event_id": this.id.string(),
+            "repo": this.repo.name.or(""),
+            "pr_number": this.payload.pull_request.number.or(this.payload.number),
+            "pr_url": this.payload.pull_request.html_url.or(""),
+            "title": this.payload.pull_request.title.or(""),
+            "author": this.actor.login.or(this.payload.pull_request.user.login.or("")),
+            "action": this.payload.action.or(""),
+            "created_at": this.created_at.or("")
+          }
+        }
+    - cache:
+        resource: seen_events
+        operator: add
+        key: '${! json("event_id") }'
+        value: "1"
+    - mapping: |
+        root = if errored() { deleted() } else { this }
+
+output:
+  redpanda:
+    seed_brokers:
+      - redpanda:9092
+    topic: github.pr.opened
+    max_in_flight: 16
