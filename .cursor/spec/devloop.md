@@ -127,6 +127,12 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `github:pull` | `REPO=owner/name PR=42`: pull JSON + files (max 20, patch 4000 chars) |
 
+### Phase 4
+
+| Task | Does |
+| --- | --- |
+| `test` | `go test ./...` (skip-LLM rules; later parse tests). `CLI_ARGS` for `-run` |
+
 ### Sim (local fixtures, not GitHub)
 
 Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced with `rpk`; **Connect and ingest.yaml are unchanged**. `repo` + `pr_number` are real public PRs so a later worker GET still works.
@@ -142,7 +148,6 @@ Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.
 
 ### Later (do not implement early)
 
-- Phase 2+: `test` (`go test ./...`)
 - Phase 8: `up` (full compose `--build`), `down`, `smoke` (healthz + row count). `logs` already covers the stack.
 
 ---

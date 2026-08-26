@@ -69,6 +69,11 @@ tasks:
       - |
         echo "App started — next: task logs SERVICE=app  or  task db:psql"
 
+  test:
+    desc: Run Go tests
+    cmds:
+      - go test {{.CLI_ARGS}} ./...
+
   infra:down:
     desc: Stop infra (keeps volumes)
     cmds:

@@ -11,6 +11,7 @@ import (
 	"github.com/straubt1/redpanda-build-exercise/internal/config"
 	"github.com/straubt1/redpanda-build-exercise/internal/githubclient"
 	"github.com/straubt1/redpanda-build-exercise/internal/kafka"
+	"github.com/straubt1/redpanda-build-exercise/internal/skipllm"
 	"github.com/straubt1/redpanda-build-exercise/internal/store"
 )
 
@@ -107,14 +108,32 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, raw [
 		row.Author = enr.Author
 	}
 	row.Error = ""
-	row.Rationale = enrichmentRationale(enr)
+	applyClassification(&row, enr)
 
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
 	}
-	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d title=%q body_len=%d files=%d",
-		msg.EventID, msg.Repo, msg.PRNumber, row.Title, len(enr.Body), len(enr.Files))
+	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d",
+		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files))
 	return nil
+}
+
+func applyClassification(row *store.Row, enr *githubclient.Enrichment) {
+	if strings.TrimSpace(enr.Body) == "" && len(enr.Files) == 0 {
+		row.Rationale = "empty body and no files"
+		return
+	}
+	names := make([]string, 0, len(enr.Files))
+	for _, f := range enr.Files {
+		names = append(names, f.Filename)
+	}
+	if cat, ok := skipllm.Match(skipllm.Default(), names); ok {
+		row.Category = cat
+		row.Source = "rule"
+		row.Rationale = skipllm.Rationale(cat) + "; " + enrichmentRationale(enr)
+		return
+	}
+	row.Rationale = enrichmentRationale(enr)
 }
 
 func enrichmentRationale(enr *githubclient.Enrichment) string {
