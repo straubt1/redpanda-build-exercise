@@ -272,7 +272,7 @@ Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, 
 
 ## Compose (target for the last infra phase)
 
-Services: `redpanda`, `connect`, `postgres`, **`reason`**, **`serve`**. Local inspect: Console `:8081`, pgAdmin `:8082` (not the product UI). **Ollama is not a Compose service** — it runs on the host (`task ollama:up`). **`reason`** calls `host.docker.internal:11434`.
+Services: `redpanda`, `connect`, `postgres`, **`reason`**, **`serve`**. Local inspect (Compose profile `debug`): Console `:8081`, pgAdmin `:8082` (not the product UI). **Ollama is not a Compose service** — it runs on the host (`task ollama:up`). **`reason`** calls `host.docker.internal:11434`.
 
 - Redpanda: `--mode=dev-container`.
 - **`reason`** waits for broker + postgres. Host model: `ollama pull` of `OLLAMA_MODEL`.

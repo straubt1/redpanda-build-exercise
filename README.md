@@ -9,8 +9,8 @@ Host ports come from `docker-compose.yml` (`task infra:up`).
 | `localhost:8080` | `serve` | HTML table + JSON API (`/api/triages`, `/healthz`). Started by `task infra:up` |
 | `localhost:5432` | `postgres` | PostgreSQL (`triage` / `triage` / `triage`). `task db:psql` |
 | `localhost:19092` | `redpanda` | Kafka API **from the host** |
-| `localhost:8081` | `console` | [Redpanda Console](http://localhost:8081) — browse topics and messages |
-| `localhost:8082` | `pgadmin` | [pgAdmin](http://localhost:8082) — browse Postgres. Server **triage** is pre-registered (no login). |
+| `localhost:8081` | `console` | [Redpanda Console](http://localhost:8081) — browse topics and messages. Compose profile `debug`: `docker compose --profile debug up -d` |
+| `localhost:8082` | `pgadmin` | [pgAdmin](http://localhost:8082) — browse Postgres. Server **triage** is pre-registered (no login). Same `debug` profile as Console. |
 
 `connect` has **no host port**. It polls GitHub and produces to Kafka on the Compose network (`redpanda:9092`). Logs: `task logs SERVICE=connect`. `task infra:up` starts it with the rest of Compose.
 

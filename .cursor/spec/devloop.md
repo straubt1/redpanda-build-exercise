@@ -15,7 +15,7 @@ Do not treat `.reference/Taskfile.yml` as canonical. Names below match **this** 
 3. **Verify** in `build-plan.md` calls `task …`. Variants use Task **vars**, not extra targets.
 4. Takehome “one command” remains `docker compose up` (Phase 8). `task up` may wrap that. Both must work.
 
-`dotenv: ['.env']`. Vars: `COMPOSE: docker compose`, `TOPIC: github.pr.opened`, `OLLAMA_MODEL: qwen2.5:14b`.
+`dotenv: ['.env']`. Vars: `TOPIC: github.pr.opened`, `OLLAMA_MODEL: qwen2.5:14b`. Compose commands call `docker compose` directly.
 
 ---
 
@@ -101,7 +101,7 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `default` | `task --list` |
 | `setup` | `.env` from example if missing; warn if `GITHUB_TOKEN` empty |
-| `infra:up` | Full Compose stack (Postgres, Redpanda, Console, pgAdmin, Connect, reason, serve); schema; create `{{.TOPIC}}`. Requires `GITHUB_TOKEN`. |
+| `infra:up` | `docker compose up -d --build --wait`, then create `{{.TOPIC}}`. Requires `GITHUB_TOKEN`. |
 | `infra:down` | Stop that stack, keep volumes |
 | `infra:down:clean` | Stop stack and **delete volumes** (Postgres + topic log) |
 | `github:events` | `/events`: counts + opened PRs (`VERBOSE=1` for raw page) |
@@ -138,9 +138,9 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 
 | Task | Does |
 | --- | --- |
-| `ollama:up` | Background `OLLAMA_HOST=0.0.0.0:11434 ollama serve` if 11434 is free; then `ollama:check` |
+| `ollama:up` | If `GET {{.OLLAMA_URL}}/api/ps` is not OK, `OLLAMA_HOST={{.OLLAMA_HOST}} ollama serve`; then `ollama:check` |
 | `ollama:logs` | `tail -f .local/ollama.log` |
-| `ollama:down` | Stop the process listening on 11434 |
+| `ollama:down` | If `pgrep ollama`, `kill` those pids |
 | `ollama:check` | GET `/api/version` + `/api/tags`. Warn if `OLLAMA_MODEL` (`qwen2.5:14b`) is missing |
 
 ### Sim (local fixtures, not GitHub)

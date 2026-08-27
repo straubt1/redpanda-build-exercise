@@ -3,14 +3,13 @@ version: "3"
 dotenv: [".env"]
 
 vars:
-  COMPOSE: docker compose
   TOPIC: github.pr.opened
   USER_AGENT: redpanda-build-exercise
   SIM_DIR: sim/pr-opened
   OLLAMA_MODEL: qwen2.5:14b
   OLLAMA_HOST: 0.0.0.0:11434
+  OLLAMA_URL: http://127.0.0.1:11434
   OLLAMA_LOG: .local/ollama.log
-  OLLAMA_PID: .local/ollama.pid
 
 tasks:
   default:
@@ -36,23 +35,34 @@ tasks:
         fi
 
   infra:up:
-    desc: Start Compose stack (Postgres, Redpanda, Connect, reason, serve, Console, pgAdmin)
+    desc: Start Compose stack (Postgres, Redpanda, Connect, reason, serve)
     cmds:
       - |
         set -euo pipefail
         if [ -z "${GITHUB_TOKEN:-}" ]; then
-          echo "GITHUB_TOKEN must be set in .env for Connect and reason" >&2
+          echo "GITHUB_TOKEN must be set in .env for Connect and Reason" >&2
           exit 1
         fi
-      - "{{.COMPOSE}} up -d --wait postgres redpanda console pgadmin"
+      - docker compose --profile debug up -d --build --wait
       - |
-        set -euo pipefail
-        {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} -X brokers=redpanda:9092 || true
-        {{.COMPOSE}} exec -T redpanda rpk topic list -X brokers=redpanda:9092
-      - "{{.COMPOSE}} up -d --build --wait connect reason serve"
-      - |
-        echo "Stack is up — serve http://localhost:8080, Console http://localhost:8081, pgAdmin http://localhost:8082, Kafka localhost:19092, Postgres localhost:5432, topic {{.TOPIC}}"
-        echo "Ollama is on the host: task ollama:up"
+        echo "Stack is up"
+        echo "  - Serve    http://localhost:8080"
+        echo "  - Console  http://localhost:8081/topics/{{.TOPIC}}/"
+        echo "  - pgAdmin  http://localhost:8082"
+        echo "  - Kafka    http://localhost:19092"
+        echo "  - Postgres http://localhost:5432"
+        echo "  - Ollama   http://localhost:11434"
+
+  infra:down:
+    desc: Stop Compose stack (keeps volumes)
+    cmds:
+      - "docker compose down"
+      - echo "Stack stopped (volumes kept)"
+
+  infra:down:clean:
+    desc: Stop infra and delete volumes (wipes Postgres data and topic log)
+    cmds:
+      - "docker compose --profile debug down --volumes --remove-orphans"
 
   connect:up:
     desc: Start Connect ingest (requires GITHUB_TOKEN)
@@ -64,7 +74,7 @@ tasks:
           echo "GITHUB_TOKEN must be set in .env for Connect to poll GitHub" >&2
           exit 1
         fi
-      - "{{.COMPOSE}} up -d connect"
+      - "docker compose up -d connect"
       - |
         echo "Connect started — next: task topic:consume   or   task logs SERVICE=connect"
 
@@ -78,45 +88,34 @@ tasks:
           echo "GITHUB_TOKEN must be set in .env for reason to fetch PRs" >&2
           exit 1
         fi
-      - "{{.COMPOSE}} up -d --build --remove-orphans reason"
+      - "docker compose up -d --build --remove-orphans reason"
       - |
         echo "reason started — next: task logs SERVICE=reason  or  task db:psql"
 
   reason:down:
     desc: Stop reason (worker keeps Postgres; serve can stay up)
     cmds:
-      - "{{.COMPOSE}} stop reason"
+      - "docker compose stop reason"
       - echo "reason stopped"
 
   serve:up:
     desc: Start serve (HTML + JSON API on :8080)
     deps: [infra:up]
     cmds:
-      - "{{.COMPOSE}} up -d --build --remove-orphans serve"
+      - "docker compose up -d --build --remove-orphans serve"
       - |
         echo "serve started — http://localhost:8080  JSON: http://localhost:8080/api/triages  logs: task logs SERVICE=serve"
 
   serve:down:
     desc: Stop serve (reason can keep classifying)
     cmds:
-      - "{{.COMPOSE}} stop serve"
+      - "docker compose stop serve"
       - echo "serve stopped"
 
   test:
     desc: Run Go tests
     cmds:
       - go test {{.CLI_ARGS}} ./...
-
-  infra:down:
-    desc: Stop Compose stack (keeps volumes)
-    cmds:
-      - "{{.COMPOSE}} stop serve reason connect pgadmin console redpanda postgres"
-      - echo "Stack stopped (volumes kept)"
-
-  infra:down:clean:
-    desc: Stop infra and delete volumes (wipes Postgres data and topic log)
-    cmds:
-      - "{{.COMPOSE}} down --volumes --remove-orphans"
 
   github:events:
     desc: GET /events — type counts and opened PRs (VERBOSE=1 for full page)
@@ -179,7 +178,8 @@ tasks:
         echo "$files" | jq '[.[0:20][] | {filename, status, patch_len: ((.patch // "") | length), patch: ((.patch // "")[0:4000])}]'
 
   ollama:up:
-    desc: Start host ollama serve in the background
+    desc: Start host ollama serve if {{.OLLAMA_URL}}/api/ps is not OK
+    silent: true
     cmds:
       - |
         set -euo pipefail
@@ -188,26 +188,16 @@ tasks:
           exit 1
         fi
         base="{{.OLLAMA_URL}}"
-        if [ -z "$base" ] && [ -n "${OLLAMA_HOST:-}" ]; then
-          case "${OLLAMA_HOST}" in
-            http://*|https://*) base="${OLLAMA_HOST}" ;;
-            *) base="http://${OLLAMA_HOST}" ;;
-          esac
-        fi
-        base="${base:-http://127.0.0.1:11434}"
         base="${base%/}"
-        mkdir -p .local
-        log="{{.OLLAMA_LOG}}"
-        pidf="{{.OLLAMA_PID}}"
-        if curl -sfS --max-time 2 "${base}/api/version" >/dev/null; then
+        if curl -sfS --max-time 2 "${base}/api/ps" >/dev/null; then
           echo "Ollama already running at ${base}"
-          echo "LAN bind is OLLAMA_HOST={{.OLLAMA_HOST}} — task ollama:down then task ollama:up to apply"
         else
-          touch "$log"
-          python3 -c 'import os,sys; p,h=sys.argv[1],sys.argv[2]; log=open(p,"ab",buffering=0); os.fork() and os._exit(0); os.setsid(); os.fork() and os._exit(0); os.dup2(log.fileno(),1); os.dup2(log.fileno(),2); os.environ["OLLAMA_HOST"]=h; os.execvp("ollama",["ollama","serve"])' "$log" "{{.OLLAMA_HOST}}"
+          mkdir -p .local
+          touch "{{.OLLAMA_LOG}}"
+          OLLAMA_HOST={{.OLLAMA_HOST}} nohup ollama serve >>"{{.OLLAMA_LOG}}" 2>&1 &
           ok=0
           for _ in $(seq 1 40); do
-            if curl -sfS --max-time 1 "${base}/api/version" >/dev/null; then
+            if curl -sfS --max-time 1 "${base}/api/ps" >/dev/null; then
               ok=1
               break
             fi
@@ -217,16 +207,13 @@ tasks:
             echo "Ollama did not become ready — task ollama:logs" >&2
             exit 1
           fi
-          listen_pid=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null | awk 'NR==1{print; exit}')
-          if [ -n "$listen_pid" ]; then
-            echo "$listen_pid" >"$pidf"
-          fi
-          echo "started ollama serve pid=${listen_pid:-unknown} log=$log OLLAMA_HOST={{.OLLAMA_HOST}}"
+          echo "started ollama serve OLLAMA_HOST={{.OLLAMA_HOST}} log={{.OLLAMA_LOG}}"
         fi
       - task: ollama:check
 
   ollama:logs:
     desc: Tail host ollama serve logs ({{.OLLAMA_LOG}})
+    silent: true
     cmds:
       - |
         set -euo pipefail
@@ -243,57 +230,23 @@ tasks:
         }
 
   ollama:down:
-    desc: Stop host Ollama (process listening on 11434)
+    desc: Stop host ollama if pgrep ollama finds a process
+    silent: true
     cmds:
       - |
         set -euo pipefail
-        pidf="{{.OLLAMA_PID}}"
-        if [ -f "$pidf" ]; then
-          pid=$(cat "$pidf")
-          if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" || true
-            echo "sent SIGTERM to pid $pid"
-          fi
-          rm -f "$pidf"
-        fi
-        if pgrep -xq Ollama 2>/dev/null || pgrep -f 'Ollama.app' >/dev/null 2>&1; then
-          echo "quitting Ollama.app so it does not restart ollama serve"
-          osascript -e 'quit app "Ollama"' >/dev/null 2>&1 || true
-          killall Ollama >/dev/null 2>&1 || true
-          sleep 0.5
-        fi
-        stop_listeners() {
-          sig="$1"
-          pids=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null || true)
-          if [ -z "$pids" ]; then
-            return 0
-          fi
+        if pgrep ollama >/dev/null 2>&1; then
+          pids=$(pgrep ollama)
+          echo "killing ollama pids: $pids"
           # shellcheck disable=SC2086
-          kill "-${sig}" $pids 2>/dev/null || true
-          return 1
-        }
-        for _ in $(seq 1 15); do
-          if stop_listeners TERM; then
-            echo "Ollama is not listening on 11434"
-            exit 0
-          fi
-          sleep 0.2
-        done
-        echo "SIGTERM did not free 11434 — sending SIGKILL"
-        stop_listeners KILL || true
-        sleep 0.3
-        pids=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null || true)
-        if [ -z "$pids" ]; then
-          echo "Ollama is not listening on 11434"
-          exit 0
+          kill $pids || true
+        else
+          echo "ollama is not running"
         fi
-        echo "still listening on 11434 (pids: $pids)" >&2
-        lsof -nP -iTCP:11434 -sTCP:LISTEN >&2 || true
-        echo "Quit Ollama from the menu bar, then retry: task ollama:down" >&2
-        exit 1
 
   ollama:check:
     desc: Verify Ollama is reachable (version + models)
+    silent: true
     cmds:
       - |
         set -euo pipefail
@@ -302,13 +255,6 @@ tasks:
           exit 1
         fi
         base="{{.OLLAMA_URL}}"
-        if [ -z "$base" ] && [ -n "${OLLAMA_HOST:-}" ]; then
-          case "${OLLAMA_HOST}" in
-            http://*|https://*) base="${OLLAMA_HOST}" ;;
-            *) base="http://${OLLAMA_HOST}" ;;
-          esac
-        fi
-        base="${base:-http://127.0.0.1:11434}"
         base="${base%/}"
         model="{{.OLLAMA_MODEL}}"
         if ! ver=$(curl -sfS --max-time 3 "${base}/api/version"); then
@@ -328,50 +274,10 @@ tasks:
           echo "WARNING: working-default model ${model} is not pulled — ollama pull ${model}" >&2
         fi
 
-  topic:consume:
-    desc: List topics and consume {{.TOPIC}} (FOLLOW=1 to tail; N=5 default)
-    cmds:
-      - |
-        set -euo pipefail
-        BROKERS="-X brokers=redpanda:9092"
-        {{.COMPOSE}} exec -T redpanda rpk topic list $BROKERS
-        if [ "${FOLLOW:-}" = "1" ]; then
-          {{.COMPOSE}} exec redpanda rpk topic consume {{.TOPIC}} $BROKERS
-          exit 0
-        fi
-        if ! {{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} $BROKERS >/dev/null; then
-          echo "topic {{.TOPIC}} not found — run task infra:up"
-          exit 0
-        fi
-        # Default describe omits partitions; -s -p is summary + HIGH-WATERMARK (skip hanging on empty).
-        {{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} -s -p $BROKERS
-        hw=$({{.COMPOSE}} exec -T redpanda rpk topic describe {{.TOPIC}} -p $BROKERS | awk 'BEGIN{s=0} $1 ~ /^[0-9]+$/ {s+=$NF} END{print s+0}')
-        echo "high watermark (sum): $hw"
-        if [ "$hw" -eq 0 ]; then
-          echo "topic empty — nothing to consume (OK if github:events has no opened PRs)"
-          exit 0
-        fi
-        n="${N:-5}"
-        if [ "$hw" -lt "$n" ]; then
-          n="$hw"
-        fi
-        {{.COMPOSE}} exec -T redpanda rpk topic consume {{.TOPIC}} -n "$n" -o start $BROKERS
-
-  db:psql:
-    desc: psql in Postgres (pass extra args after --, e.g. -- -c '\dt')
-    cmds:
-      - |
-        set -euo pipefail
-        if [ -n "{{.CLI_ARGS}}" ]; then
-          {{.COMPOSE}} exec -T postgres psql -U triage -d triage {{.CLI_ARGS}}
-        else
-          {{.COMPOSE}} exec postgres psql -U triage -d triage
-        fi
-
   logs:
     desc: Tail compose logs (SERVICE=redpanda optional)
     cmds:
-      - "{{.COMPOSE}} logs -f {{.SERVICE}}"
+      - "docker compose logs -f {{.SERVICE}}"
 
   sim:reset:
     desc: Drop sim rows in Postgres and recreate the work topic (all messages)
@@ -379,16 +285,16 @@ tasks:
       - |
         set -euo pipefail
         BROKERS="-X brokers=redpanda:9092"
-        {{.COMPOSE}} exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages WHERE event_id LIKE 'sim-%';"
+        docker compose exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages WHERE event_id LIKE 'sim-%';"
         connect_was_up=0
-        if [ -n "$({{.COMPOSE}} ps -q --status running connect 2>/dev/null || true)" ]; then
+        if [ -n "$(docker compose ps -q --status running connect 2>/dev/null || true)" ]; then
           connect_was_up=1
-          {{.COMPOSE}} stop connect
+          docker compose stop connect
         fi
-        {{.COMPOSE}} exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
-        {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
+        docker compose exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
+        docker compose exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
         if [ "$connect_was_up" = 1 ]; then
-          {{.COMPOSE}} start connect
+          docker compose start connect
         fi
         echo "Reset: Postgres sim-% rows deleted, topic {{.TOPIC}} recreated"
 
@@ -398,16 +304,16 @@ tasks:
       - |
         set -euo pipefail
         BROKERS="-X brokers=redpanda:9092"
-        {{.COMPOSE}} exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages;"
+        docker compose exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages;"
         connect_was_up=0
-        if [ -n "$({{.COMPOSE}} ps -q --status running connect 2>/dev/null || true)" ]; then
+        if [ -n "$(docker compose ps -q --status running connect 2>/dev/null || true)" ]; then
           connect_was_up=1
-          {{.COMPOSE}} stop connect
+          docker compose stop connect
         fi
-        {{.COMPOSE}} exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
-        {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
+        docker compose exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
+        docker compose exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
         if [ "$connect_was_up" = 1 ]; then
-          {{.COMPOSE}} start connect
+          docker compose start connect
         fi
         echo "Reset all: Postgres pr_triages emptied, topic {{.TOPIC}} recreated"
 
@@ -429,7 +335,7 @@ tasks:
         for f in "${files[@]}"; do
           echo "produce $f"
           compact=$(jq -c . "$f")
-          {{.COMPOSE}} exec -T -e MSG="$compact" redpanda sh -c 'printf "%s\n" "$MSG" | rpk topic produce {{.TOPIC}} -X brokers=redpanda:9092'
+          docker compose exec -T -e MSG="$compact" redpanda sh -c 'printf "%s\n" "$MSG" | rpk topic produce {{.TOPIC}} -X brokers=redpanda:9092'
         done
         echo "Produced ${#files[@]} message(s) to {{.TOPIC}} — Console http://localhost:8081"
 
