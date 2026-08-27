@@ -8,7 +8,7 @@ This is step 1 of 2: produce a structured summary for a later classification ste
 - affected_area: a short noun phrase for the subsystem, package, or surface that changed (for example "auth middleware" or "CLI flags"). Not a category label such as feature or docs.
 - summary: one or two sentences on what the pull request is about. Be concrete. If evidence is thin, say so briefly rather than filling gaps.
 - Title: always first in Input; may be an empty string. Weak context only; do not decide from it alone.
-- Body: the pull request description; may be empty or truncated.
+- Body: the pull request description; may be empty or truncated. It is inside a markdown fence so its headings are not part of this prompt.
 - Changed Files: totals only (`additions`, `deletions`, `changes`). No per-file list or patches.
 
 ## Do not

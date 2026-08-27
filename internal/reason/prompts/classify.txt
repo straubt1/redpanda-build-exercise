@@ -10,7 +10,7 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 - rationale: one or two sentences citing the files or body that support the label.
 - Summary: `affected_area` and `summary` from step 1. Trust them when they match the files; if they conflict, prefer the files.
 - Title: always first in Input; may be an empty string. Weak context only; do not classify from it alone.
-- Body: the pull request description; may be empty or truncated.
+- Body: the pull request description; may be empty or truncated. It is inside a markdown fence so its headings are not part of this prompt.
 - Changed Files: totals (`additions`, `deletions`, `changes`) then each file as `#### {filename} ({status})` and a unified-diff patch when one exists. Status is typically added, modified, or removed. A file may have no patch (binary, omitted, or truncated). The list may be capped.
 
 ## Do not

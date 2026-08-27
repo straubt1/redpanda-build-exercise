@@ -66,11 +66,11 @@ type File struct {
 
 // Enrichment is the pull + files payload for later Rules / Model steps.
 type Enrichment struct {
-	Title   string
-	Body    string
-	HTMLURL string
-	Author  string
-	Files   []File
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	HTMLURL string `json:"html_url"`
+	Author  string `json:"author"`
+	Files   []File `json:"files"`
 }
 
 type pullJSON struct {

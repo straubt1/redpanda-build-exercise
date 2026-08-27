@@ -182,7 +182,7 @@ When a Rule fires: still persist repo, pr, title, url, file list summary if the 
 
 ### Model I/O
 
-Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends `## Summary` (classify only), then a `## Input` section: title, truncated body, then changed-file totals. Classification also gets per-file patches; Summarize does not. See `internal/reason/prompts/README.md`.
+Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends `## Summary` (classify only), then a `## Input` section: title, truncated body inside a markdown fence, then changed-file totals. Classification also gets per-file patches; Summarize does not. See `internal/reason/prompts/README.md`.
 
 **Summarize** must produce structured JSON, e.g. `{ "affected_area": string, "summary": string }`. Exact keys may vary; parse must be tolerant.
 
@@ -268,7 +268,7 @@ Empty table: visible empty state, not a 500.
 
 ## Reason
 
-Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, fetches GitHub, Rules or Models, upserts `pr_triages`. No host port. Needs Kafka, Postgres, `GITHUB_TOKEN`, host Ollama at `host.docker.internal:11434`.
+Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, fetches GitHub, Rules or Models, upserts `pr_triages`. No host port. Needs Kafka, Postgres, `GITHUB_TOKEN`, host Ollama at `host.docker.internal:11434`. Always-on debug dumps under `/logs/{event_id}/` (kafka message, enrichment, prompts, Postgres row); fail-open. Compose bind-mounts `.local/reason-logs:/logs`.
 
 ## Compose (target for the last infra phase)
 

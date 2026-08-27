@@ -133,3 +133,21 @@ func TestWriteEvidence_alwaysIncludesTitle(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteEvidence_fencesBody(t *testing.T) {
+	var b strings.Builder
+	writeEvidence(&b, Input{
+		Title: "t",
+		Body:  "## What\n\n```\nSEMSQL\n```\n",
+	}, false)
+	got := b.String()
+	bodyAt := strings.Index(got, "Body:\n")
+	filesAt := strings.Index(got, "### Changed Files:\n")
+	if bodyAt < 0 || filesAt < 0 || bodyAt > filesAt {
+		t.Fatalf("Body must precede Changed Files: %q", got)
+	}
+	section := got[bodyAt:filesAt]
+	if !strings.Contains(section, "````\n## What\n\n```\nSEMSQL\n```\n\n````\n") {
+		t.Fatalf("body must be fenced with a longer backtick run than nested fences: %q", section)
+	}
+}

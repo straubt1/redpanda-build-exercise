@@ -35,7 +35,7 @@ func writeEvidence(b *strings.Builder, in Input, withFiles bool) {
 	if len(body) > maxBodyChars {
 		body = body[:maxBodyChars]
 	}
-	b.WriteString(body)
+	b.WriteString(markdownFence(body))
 	b.WriteString("\n\n")
 	b.WriteString("### Changed Files:\n\n")
 	additions, deletions, changes := 0, 0, 0
@@ -56,4 +56,16 @@ func writeEvidence(b *strings.Builder, in Input, withFiles bool) {
 			b.WriteString("\n")
 		}
 	}
+}
+
+// markdownFence wraps s in a backtick run longer than any run inside s,
+// so PR markdown (headings, nested fences) stays evidence, not prompt structure.
+func markdownFence(s string) string {
+	n := 3
+	ticks := strings.Repeat("`", n)
+	for strings.Contains(s, ticks) {
+		n++
+		ticks = strings.Repeat("`", n)
+	}
+	return ticks + "\n" + s + "\n" + ticks
 }

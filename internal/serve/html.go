@@ -5,7 +5,7 @@ const pageHTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PR Triage</title>
+  <title>Pull Request Triage</title>
   <style>
     :root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; }
     body { margin: 2rem; color: #122; background: #f7f8f5; }

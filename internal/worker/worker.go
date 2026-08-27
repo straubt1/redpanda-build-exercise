@@ -8,6 +8,7 @@ import (
 
 	"github.com/straubt1/redpanda-build-exercise/internal/applog"
 	"github.com/straubt1/redpanda-build-exercise/internal/config"
+	"github.com/straubt1/redpanda-build-exercise/internal/debugdump"
 	"github.com/straubt1/redpanda-build-exercise/internal/githubclient"
 	"github.com/straubt1/redpanda-build-exercise/internal/kafka"
 	"github.com/straubt1/redpanda-build-exercise/internal/llm"
@@ -76,12 +77,15 @@ func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client
 	if !ok {
 		return nil
 	}
+	debugdump.WriteJSONBytes(msg.EventID, "kafka.json", raw)
 
 	// Enrich the data with GH API by fetching the PR data not in the kafka message
 	enr, err := enrich(ctx, gh, msg)
 	if err != nil {
+		debugdump.WriteJSON(msg.EventID, "enrichment.json", map[string]string{"error": err.Error()})
 		return persistFetchFailure(ctx, db, msg, err)
 	}
+	debugdump.WriteJSON(msg.EventID, "enrichment.json", enr)
 
 	// Apply the classification - this the top level classification of the PR after all needed data is fetched
 	out := reason.Classify(ctx, ollama, inputFrom(enr), msg.EventID)
@@ -141,6 +145,7 @@ func persist(ctx context.Context, db *store.Store, msg Message, enr *githubclien
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
 	}
+	debugdump.WriteJSON(msg.EventID, "results.txt", row)
 	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d summarize_retries=%d classify_retries=%d",
 		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files), out.SummarizeRetries, out.ClassifyRetries)
 	return nil
@@ -155,6 +160,7 @@ func persistFetchFailure(ctx context.Context, db *store.Store, msg Message, fetc
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
 	}
+	debugdump.WriteJSON(msg.EventID, "results.txt", row)
 	return nil
 }
 

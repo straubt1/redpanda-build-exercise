@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/straubt1/redpanda-build-exercise/internal/applog"
+	"github.com/straubt1/redpanda-build-exercise/internal/debugdump"
 )
 
 // MaxAttempts is first try plus 2 retries (decisions.md).
@@ -26,11 +27,14 @@ func runModel[T any](
 		if attempt > 1 && last != nil && repair != nil {
 			use = prompt + "\n\n" + repair(last)
 		}
+		debugdump.Write(eventID, fmt.Sprintf("prompts/%s_attempt%d.md", step, attempt), []byte(use))
 		raw, err := llm.Complete(ctx, use)
 		if err != nil {
+			debugdump.Write(eventID, fmt.Sprintf("prompts/%s_attempt%d_response.md", step, attempt), []byte(err.Error()))
 			last = err
 			continue
 		}
+		debugdump.Write(eventID, fmt.Sprintf("prompts/%s_attempt%d_response.md", step, attempt), []byte(raw))
 		got, err := parse(raw)
 		if err != nil {
 			last = err
