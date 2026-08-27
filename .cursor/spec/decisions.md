@@ -78,7 +78,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | UI stats | Counts over **all** `pr_triages` | Total; not reasoned (`source` not `model`/`rule`); `source=model`; `source=rule`. |
 | When column | Browser local time | Display like `1:30 pm`; `title` hover is full local datetime with seconds. Tiny inline JS; no library. |
 | JSON API | `GET /api/triages` | Same row set as `GET /`, plus `stats`. |
-| GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 1** opened PR per sweep (`batch_index() >= 1` → drop) before cache. Cache still drops duplicate `id`s. |
+| GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. Cap opened PRs per sweep via `CONNECT_BATCH_LIMIT` (default **1**; `batch_index() >= N` → drop) before cache. Cache still drops duplicate `id`s. |
 | Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
@@ -179,6 +179,7 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — Reason terminology: Rules then Summarize then Classification; `source=model`; persist `summary`; `created_at` matches the Message.
 - 2026-08-27 — LLM instructions live in `internal/reason/prompts/` and are `//go:embed`’d. Evidence assembly stays in Go.
 - 2026-08-27 — Connect: max **1** opened-PR message per generate sweep (`batch_index() >= 1`).
+- 2026-08-27 — Connect sweep cap is `CONNECT_BATCH_LIMIT` (default 1). Override in `.env`; Compose passes `${CONNECT_BATCH_LIMIT:-1}` into the connect service.
 - 2026-08-27 — `task infra:up` starts the full Compose stack (including Connect, reason, serve). Ollama remains host-side.
 - 2026-08-27 — Model `## Input` order is title, body, then changed files. File totals (`additions`/`deletions`/`changes`) are summed from the fetched file list. Title may be `""`.
 - 2026-08-27 — Summarize Input is title, body, and change totals only. Classification Input also includes per-file patches.

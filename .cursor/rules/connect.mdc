@@ -10,7 +10,7 @@ alwaysApply: false
 
 - Explode each page JSON **array** into one message per event before filter.
 - Keep `PullRequestEvent` where `payload.action` is in an allowlist (`opened` only for v1).
-- Cap **1** surviving message per generate sweep (`batch_index() >= 1` → `deleted()`), then cache.
+- Cap surviving messages per generate sweep (`batch_index() >= ${CONNECT_BATCH_LIMIT:1}` → `deleted()`), then cache. Default **1**; override with `CONNECT_BATCH_LIMIT` in `.env`.
 - Project the work-topic schema in `.cursor/spec/architecture.md`. One Bloblang mapping; `mapping` rebuilds `root`.
 - Cache on GitHub event `id`. Produce `github.pr.opened`.
 - Never call Ollama / OpenAI from Connect.

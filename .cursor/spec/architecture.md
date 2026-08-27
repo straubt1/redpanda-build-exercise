@@ -71,7 +71,7 @@ GET https://api.github.com/events
           author, action, created_at
         │
         ▼
- cap 1 per sweep (batch_index)
+ cap N per sweep (CONNECT_BATCH_LIMIT, default 1)
         │
         ▼
  cache key = event_id  (seen → drop)

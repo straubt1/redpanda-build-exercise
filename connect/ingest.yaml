@@ -67,8 +67,9 @@ pipeline:
           }
         }
     # Cap survivors per generate sweep (batch_index is 0-based; only applies while still one batch).
+    # CONNECT_BATCH_LIMIT default 1; set in .env to keep more opened PRs per 30s tick.
     - mapping: |
-        root = if batch_index() >= 1 { deleted() } else { this }
+        root = if batch_index() >= ${CONNECT_BATCH_LIMIT:1} { deleted() } else { this }
     - cache:
         resource: seen_events
         operator: add

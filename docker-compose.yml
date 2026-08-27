@@ -46,6 +46,7 @@ services:
       - .env
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      CONNECT_BATCH_LIMIT: ${CONNECT_BATCH_LIMIT:-1}
     volumes:
       - ./connect/ingest.yaml:/connect.yaml:ro
     command: ["run", "/connect.yaml"]
