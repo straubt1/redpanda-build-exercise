@@ -8,6 +8,7 @@ vars:
   USER_AGENT: redpanda-build-exercise
   SIM_DIR: sim/pr-opened
   OLLAMA_MODEL: qwen2.5:14b
+  OLLAMA_HOST: 0.0.0.0:11434
   OLLAMA_LOG: .local/ollama.log
   OLLAMA_PID: .local/ollama.pid
 
@@ -190,11 +191,10 @@ tasks:
         pidf="{{.OLLAMA_PID}}"
         if curl -sfS --max-time 2 "${base}/api/version" >/dev/null; then
           echo "Ollama already running at ${base}"
+          echo "LAN bind is OLLAMA_HOST={{.OLLAMA_HOST}} — task ollama:down then task ollama:up to apply"
         else
           touch "$log"
-          nohup ollama serve >>"$log" 2>&1 &
-          echo $! >"$pidf"
-          echo "started ollama serve pid=$(cat "$pidf") log=$log"
+          python3 -c 'import os,sys; p,h=sys.argv[1],sys.argv[2]; log=open(p,"ab",buffering=0); os.fork() and os._exit(0); os.setsid(); os.fork() and os._exit(0); os.dup2(log.fileno(),1); os.dup2(log.fileno(),2); os.environ["OLLAMA_HOST"]=h; os.execvp("ollama",["ollama","serve"])' "$log" "{{.OLLAMA_HOST}}"
           ok=0
           for _ in $(seq 1 40); do
             if curl -sfS --max-time 1 "${base}/api/version" >/dev/null; then
@@ -207,6 +207,11 @@ tasks:
             echo "Ollama did not become ready — task ollama:logs" >&2
             exit 1
           fi
+          listen_pid=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null | awk 'NR==1{print; exit}')
+          if [ -n "$listen_pid" ]; then
+            echo "$listen_pid" >"$pidf"
+          fi
+          echo "started ollama serve pid=${listen_pid:-unknown} log=$log OLLAMA_HOST={{.OLLAMA_HOST}}"
         fi
       - task: ollama:check
 
@@ -219,7 +224,13 @@ tasks:
         touch "{{.OLLAMA_LOG}}"
         echo "tailing {{.OLLAMA_LOG}} (Ctrl-C to stop)"
         echo "empty if Ollama was started outside task ollama:up (e.g. Ollama.app)"
-        tail -f "{{.OLLAMA_LOG}}"
+        tail -f "{{.OLLAMA_LOG}}" || {
+          code=$?
+          if [ "$code" -eq 130 ] || [ "$code" -eq 143 ]; then
+            exit 0
+          fi
+          exit "$code"
+        }
 
   ollama:down:
     desc: Stop host Ollama (process listening on 11434)
@@ -235,21 +246,41 @@ tasks:
           fi
           rm -f "$pidf"
         fi
-        for _ in $(seq 1 20); do
+        if pgrep -xq Ollama 2>/dev/null || pgrep -f 'Ollama.app' >/dev/null 2>&1; then
+          echo "quitting Ollama.app so it does not restart ollama serve"
+          osascript -e 'quit app "Ollama"' >/dev/null 2>&1 || true
+          killall Ollama >/dev/null 2>&1 || true
+          sleep 0.5
+        fi
+        stop_listeners() {
+          sig="$1"
           pids=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null || true)
           if [ -z "$pids" ]; then
+            return 0
+          fi
+          # shellcheck disable=SC2086
+          kill "-${sig}" $pids 2>/dev/null || true
+          return 1
+        }
+        for _ in $(seq 1 15); do
+          if stop_listeners TERM; then
             echo "Ollama is not listening on 11434"
             exit 0
           fi
-          # shellcheck disable=SC2086
-          kill $pids 2>/dev/null || true
           sleep 0.2
         done
+        echo "SIGTERM did not free 11434 — sending SIGKILL"
+        stop_listeners KILL || true
+        sleep 0.3
         pids=$(lsof -nP -iTCP:11434 -sTCP:LISTEN -t 2>/dev/null || true)
-        if [ -n "$pids" ]; then
-          echo "still listening on 11434 (pids: $pids) — Ollama.app may have restarted it" >&2
-          exit 1
+        if [ -z "$pids" ]; then
+          echo "Ollama is not listening on 11434"
+          exit 0
         fi
+        echo "still listening on 11434 (pids: $pids)" >&2
+        lsof -nP -iTCP:11434 -sTCP:LISTEN >&2 || true
+        echo "Quit Ollama from the menu bar, then retry: task ollama:down" >&2
+        exit 1
 
   ollama:check:
     desc: Verify Ollama is reachable (version + models)

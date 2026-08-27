@@ -138,7 +138,7 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 
 | Task | Does |
 | --- | --- |
-| `ollama:up` | Background `ollama serve` if 11434 is free; then `ollama:check` |
+| `ollama:up` | Background `OLLAMA_HOST=0.0.0.0:11434 ollama serve` if 11434 is free; then `ollama:check` |
 | `ollama:logs` | `tail -f .local/ollama.log` |
 | `ollama:down` | Stop the process listening on 11434 |
 | `ollama:check` | GET `/api/version` + `/api/tags`. Warn if `OLLAMA_MODEL` (`qwen2.5:14b`) is missing |

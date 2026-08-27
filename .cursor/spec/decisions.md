@@ -85,7 +85,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Inspect GitHub | `task github:events` (`VERBOSE=1` for full page) | One curl; counts + opened PRs |
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
 | Inspect Postgres UI | pgAdmin `http://localhost:8082` | No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
-| Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `127.0.0.1:11434`. Logs: `.local/ollama.log`. |
+| Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `ollama serve` with `OLLAMA_HOST=0.0.0.0:11434` (LAN). Check still curls `127.0.0.1:11434`. Logs: `.local/ollama.log`. |
 | jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
 
 ### Lockfile set (skip-LLM)
@@ -165,3 +165,4 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — App reaches host Ollama at `host.docker.internal:11434`. Do not `extra_hosts` that name to `host-gateway` on Docker Desktop (it became `172.17.0.1` and connection refused).
 - 2026-08-26 — Phase 7 UI: Pico CSS tables, sortable via `sort`/`dir`, JSON at `GET /api/triages`. Still `net/http`, no SPA.
 - 2026-08-26 — Split Go: Compose **`reason`** (Kafka + GitHub + Ollama + upsert) vs **`serve`** (HTML + JSON, Postgres read). Former `app` service is `reason`.
+- 2026-08-26 — `task ollama:up` sets `OLLAMA_HOST=0.0.0.0:11434` so LAN clients can reach this Mac. Override: `task ollama:up OLLAMA_HOST=127.0.0.1:11434`.
