@@ -90,7 +90,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Inspect GitHub | `task github:events` (`VERBOSE=1` for full page) | One curl; counts + opened PRs |
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
 | Inspect Postgres UI | pgAdmin `http://localhost:8082` | Compose profile `debug` (`docker compose --profile debug up -d`). No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
-| Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `up` starts `OLLAMA_HOST=0.0.0.0:11434 ollama serve` unless `GET http://127.0.0.1:11434/api/ps` is already OK. `down` is `pgrep ollama` then `kill`. Logs: `.local/ollama.log`. |
+| Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `up` starts `OLLAMA_HOST=0.0.0.0:11434 ollama serve` unless `GET http://127.0.0.1:11434/api/ps` is already OK. `down` is `pgrep ollama` then `/bin/kill`. Logs: `.local/ollama.log`. |
 | `infra:up` | Default Compose stack | Postgres, Redpanda, Connect, **reason**, **serve**. Creates the work topic. Requires `GITHUB_TOKEN`. Ollama stays on the host (`task ollama:up`). Console and pgAdmin are profile `debug`. |
 | `infra:down` | Stop that stack, keep volumes | `infra:down:clean` also deletes volumes. |
 | jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
@@ -185,5 +185,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — Reason writes per-event debug dumps to `/logs/{event_id}/` (always on, fail-open). Compose bind-mounts `.local/reason-logs:/logs`.
 - 2026-08-27 — Model `## Input` fences the PR body in markdown so its headings/code fences are not part of the prompt.
 - 2026-08-27 — Classify Input marks a cut patch with `[truncated]` on `#### {filename} ({status})`. classify.txt splits counts vs per-file vs how to read a unified-diff patch.
-- 2026-08-27 — `ollama:up` starts serve only if `GET /api/ps` is not OK. `ollama:down` is `pgrep ollama` then `kill`.
+- 2026-08-27 — `ollama:up` starts serve only if `GET /api/ps` is not OK. `ollama:down` is `pgrep ollama` then `/bin/kill` (Task's shell has no `kill` builtin).
 - 2026-08-27 — Console and pgAdmin sit on Compose profile `debug`. They are not started by `docker compose up` / `task infra:up`. Start with `docker compose --profile debug up -d`.

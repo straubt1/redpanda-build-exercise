@@ -140,7 +140,7 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `ollama:up` | If `GET {{.OLLAMA_URL}}/api/ps` is not OK, `OLLAMA_HOST={{.OLLAMA_HOST}} ollama serve`; then `ollama:check` |
 | `ollama:logs` | `tail -f .local/ollama.log` |
-| `ollama:down` | If `pgrep ollama`, `kill` those pids |
+| `ollama:down` | If `pgrep ollama`, `/bin/kill` those pids |
 | `ollama:check` | GET `/api/version` + `/api/tags`. Warn if `OLLAMA_MODEL` (`qwen2.5:14b`) is missing |
 
 ### Sim (local fixtures, not GitHub)

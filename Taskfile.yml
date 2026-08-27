@@ -56,7 +56,7 @@ tasks:
   infra:down:
     desc: Stop Compose stack (keeps volumes)
     cmds:
-      - "docker compose down"
+      - "docker compose --profile debug down"
       - echo "Stack stopped (volumes kept)"
 
   infra:down:clean:
@@ -238,8 +238,9 @@ tasks:
         if pgrep ollama >/dev/null 2>&1; then
           pids=$(pgrep ollama)
           echo "killing ollama pids: $pids"
+          # Task's interpreter has no kill builtin; use the host binary.
           # shellcheck disable=SC2086
-          kill $pids || true
+          /bin/kill $pids || true
         else
           echo "ollama is not running"
         fi
