@@ -11,13 +11,15 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 - Summary: `affected_area` and `summary` from step 1. Trust them when they match the files; if they conflict, prefer the files.
 - Title: always first in Input; may be an empty string. Weak context only; do not classify from it alone.
 - Body: the pull request description; may be empty or truncated. It is inside a markdown fence so its headings are not part of this prompt.
-- Changed Files: totals (`additions`, `deletions`, `changes`) then each file as `#### {filename} ({status})` and a unified-diff patch when one exists. Status is typically added, modified, or removed. A file may have no patch (binary, omitted, or truncated). The list may be capped.
+- Changed Files (counts): `additions`, `deletions`, `changes` summed across the files in Input. The file list may be capped, so these totals are for the listed files, not necessarily the whole PR.
+- Each file: `#### {filename} ({status})` then a patch when one exists. Status is typically added, modified, or removed. If the heading ends with `[truncated]`, the patch was cut and later hunks are missing. A file may have no patch (binary, or GitHub omitted it).
+- How to read a patch: it is a unified diff (git diff hunks from GitHub's Files API), usually starting at `@@` rather than `diff --git`. `@@ -oldStart,oldCount +newStart,newCount @@` begins a hunk. The first character of each following line is the marker: space = unchanged context, `-` = removed from the old file, `+` = added in the new file; the rest of the line is content. Do not treat later `+`/`-` in the line as markers. If `[truncated]`, classify from what is visible plus filename, status, and counts; do not invent missing hunks; lower confidence when the cut could hide the real change.
 
 ## Do not
 
 - Do not make network or API calls. Do not fetch GitHub, clone a repository, follow links, browse the web, or use tools. Rely only on this prompt.
 - Do not invent files, diffs, or behavior that are not in the evidence.
-- Do not treat a missing patch as proof the file is empty; still use filename and status.
+- Do not treat a missing or `[truncated]` patch as proof the rest of the file is empty; still use filename, status, and counts.
 - Do not classify from the title alone, or when the title contradicts body and files.
 - Do not invent a category outside the allowed list.
 

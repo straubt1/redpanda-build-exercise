@@ -51,7 +51,8 @@ type chatResponse struct {
 
 func (c *Client) Complete(ctx context.Context, prompt string) (string, error) {
 	body, err := json.Marshal(chatRequest{
-		Model:       c.model,
+		Model: c.model,
+		// system vs user vs assistant messages
 		Messages:    []message{{Role: "user", Content: prompt}},
 		Temperature: 0,
 	})

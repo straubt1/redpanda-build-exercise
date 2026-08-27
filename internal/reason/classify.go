@@ -16,6 +16,7 @@ type FileInput struct {
 	Additions int
 	Deletions int
 	Changes   int
+	Truncated bool
 }
 
 type Input struct {

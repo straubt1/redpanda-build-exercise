@@ -151,3 +151,25 @@ func TestWriteEvidence_fencesBody(t *testing.T) {
 		t.Fatalf("body must be fenced with a longer backtick run than nested fences: %q", section)
 	}
 }
+
+func TestWriteEvidence_marksTruncatedPatch(t *testing.T) {
+	var b strings.Builder
+	writeEvidence(&b, Input{
+		Title: "t",
+		Body:  "b",
+		Files: []FileInput{
+			{Filename: "a.go", Status: "modified", Patch: "UNIQUE_PATCH_A", Truncated: true},
+			{Filename: "b.go", Status: "added", Patch: "UNIQUE_PATCH_B"},
+		},
+	}, true)
+	got := b.String()
+	if !strings.Contains(got, "#### a.go (modified) [truncated]\n") {
+		t.Fatalf("truncated file must be marked: %q", got)
+	}
+	if !strings.Contains(got, "#### b.go (added)\n") {
+		t.Fatalf("full patch must not be marked truncated: %q", got)
+	}
+	if strings.Contains(got, "#### b.go (added) [truncated]") {
+		t.Fatalf("untruncated file marked truncated: %q", got)
+	}
+}

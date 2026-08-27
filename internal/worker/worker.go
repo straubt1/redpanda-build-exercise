@@ -121,6 +121,7 @@ func inputFrom(enr *githubclient.Enrichment) reason.Input {
 			Additions: f.Additions,
 			Deletions: f.Deletions,
 			Changes:   f.Changes,
+			Truncated: f.Truncated,
 		})
 	}
 	return reason.Input{Title: enr.Title, Body: enr.Body, Files: files}

@@ -2,7 +2,7 @@
 
 Static instructions for the Summarize → Classification loop. Compiled into the `reason` binary with `//go:embed` (see `internal/reason/embed.go`). Edit these files, then rebuild `reason`. They are **not** templates: no `{{`. JSON examples are literal.
 
-Go still builds `## Summary` (classify only), the `## Input` section (title, fenced body, then changed-file totals — title always present, may be empty; classify also gets per-file patches), and the parse-error line on classify retry. Body is wrapped in a markdown fence (backtick run longer than any run in the truncated body).
+Go still builds `## Summary` (classify only), the `## Input` section (title, fenced body, then changed-file totals — title always present, may be empty; classify also gets per-file patches), and the parse-error line on classify retry. Body is wrapped in a markdown fence (backtick run longer than any run in the truncated body). A cut patch is marked `[truncated]` on the file heading.
 
 | File | Loaded as | When |
 | --- | --- | --- |

@@ -166,7 +166,7 @@ Same token + User-Agent as Connect.
 - Pull: `GET https://api.github.com/repos/{owner}/{repo}/pulls/{number}`
 - Files: `GET https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files`
 
-Respect file budget from `decisions.md`. Always keep `filename`, `status` (added/modified/removed), and `additions`/`deletions`/`changes`. Patches are optional evidence for the model; filenames alone are not enough for the “read the change” requirement when a patch exists — send truncated patch when present.
+Respect file budget from `decisions.md`. Always keep `filename`, `status` (added/modified/removed), and `additions`/`deletions`/`changes`. Patches are optional evidence for the model; filenames alone are not enough for the “read the change” requirement when a patch exists — send truncated patch when present, and mark that file heading `[truncated]`.
 
 404 / 403: upsert `unknown`, store error, do not crash the consumer.
 

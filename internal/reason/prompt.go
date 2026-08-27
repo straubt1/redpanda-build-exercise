@@ -49,7 +49,11 @@ func writeEvidence(b *strings.Builder, in Input, withFiles bool) {
 		return
 	}
 	for _, f := range in.Files {
-		fmt.Fprintf(b, "\n#### %s (%s)\n", f.Filename, f.Status)
+		if f.Truncated {
+			fmt.Fprintf(b, "\n#### %s (%s) [truncated]\n", f.Filename, f.Status)
+		} else {
+			fmt.Fprintf(b, "\n#### %s (%s)\n", f.Filename, f.Status)
+		}
 		if f.Patch != "" {
 			b.WriteString("\n")
 			b.WriteString(f.Patch)

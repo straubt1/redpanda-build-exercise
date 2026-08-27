@@ -62,6 +62,7 @@ type File struct {
 	Additions int    `json:"additions"`
 	Deletions int    `json:"deletions"`
 	Changes   int    `json:"changes"`
+	Truncated bool   `json:"truncated"`
 }
 
 // Enrichment is the pull + files payload for later Rules / Model steps.
@@ -167,6 +168,7 @@ func applyBudget(files []File) []File {
 	for i := range files {
 		if len(files[i].Patch) > MaxPatchChars {
 			files[i].Patch = files[i].Patch[:MaxPatchChars]
+			files[i].Truncated = true
 		}
 	}
 	return files
