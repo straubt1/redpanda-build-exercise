@@ -166,7 +166,7 @@ Same token + User-Agent as Connect.
 - Pull: `GET https://api.github.com/repos/{owner}/{repo}/pulls/{number}`
 - Files: `GET https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files`
 
-Respect file budget from `decisions.md`. Always keep `filename` and `status` (added/modified/removed). Patches are optional evidence for the model; filenames alone are not enough for the “read the change” requirement when a patch exists — send truncated patch when present.
+Respect file budget from `decisions.md`. Always keep `filename`, `status` (added/modified/removed), and `additions`/`deletions`/`changes`. Patches are optional evidence for the model; filenames alone are not enough for the “read the change” requirement when a patch exists — send truncated patch when present.
 
 404 / 403: upsert `unknown`, store error, do not crash the consumer.
 
@@ -182,7 +182,7 @@ When a Rule fires: still persist repo, pr, title, url, file list summary if the 
 
 ### Model I/O
 
-Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends changed files, truncated body, then title (last). See `internal/reason/prompts/README.md`.
+Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends `## Summary` (classify only), then a `## Input` section: title, truncated body, then changed-file totals. Classification also gets per-file patches; Summarize does not. See `internal/reason/prompts/README.md`.
 
 **Summarize** must produce structured JSON, e.g. `{ "affected_area": string, "summary": string }`. Exact keys may vary; parse must be tolerant.
 
@@ -190,7 +190,7 @@ Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`
 
 `category` normalized: trim, lowercase, hyphenate spaces if needed. If not in the enum → retry once with a “label must be one of …” repair prompt, then `unknown`.
 
-Do not classify from title alone in the prompt. Title may be included as context **after** body/files, not instead of them.
+Do not classify from title alone in the prompt. Title is always included in `## Input` first (the string may be empty), then body, then files.
 
 ### Parse (must be unit-tested)
 

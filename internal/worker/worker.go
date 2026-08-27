@@ -110,7 +110,14 @@ func enrich(ctx context.Context, gh *githubclient.Client, msg Message) (*githubc
 func inputFrom(enr *githubclient.Enrichment) reason.Input {
 	files := make([]reason.FileInput, 0, len(enr.Files))
 	for _, f := range enr.Files {
-		files = append(files, reason.FileInput{Filename: f.Filename, Status: f.Status, Patch: f.Patch})
+		files = append(files, reason.FileInput{
+			Filename:  f.Filename,
+			Status:    f.Status,
+			Patch:     f.Patch,
+			Additions: f.Additions,
+			Deletions: f.Deletions,
+			Changes:   f.Changes,
+		})
 	}
 	return reason.Input{Title: enr.Title, Body: enr.Body, Files: files}
 }

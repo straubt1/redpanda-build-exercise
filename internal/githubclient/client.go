@@ -56,9 +56,12 @@ func StatusOf(err error) int {
 }
 
 type File struct {
-	Filename string `json:"filename"`
-	Status   string `json:"status"`
-	Patch    string `json:"patch"`
+	Filename  string `json:"filename"`
+	Status    string `json:"status"`
+	Patch     string `json:"patch"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Changes   int    `json:"changes"`
 }
 
 // Enrichment is the pull + files payload for later Rules / Model steps.

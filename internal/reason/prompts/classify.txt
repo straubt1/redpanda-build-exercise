@@ -1,5 +1,27 @@
-Classify this GitHub pull request.
-Use the summary, PR body, and changed files. Do not classify from the title alone.
-category must be one of: security, feature, refactor, docs, dependency-bump, unknown.
-confidence is a number from 0 to 1.
-Reply with JSON only: {"category":"...","confidence":0.0,"rationale":"..."}
+# Classify a GitHub pull request
+
+This is step 2 of 2: assign a category using the Summary from step 1 and the evidence in Input below.
+
+## How to classify
+
+- Use Summary, Body, and Changed Files. Prefer patches and file paths over the title.
+- category must be one of: security, feature, refactor, docs, dependency-bump, unknown.
+- confidence is a number from 0 to 1. Lower when evidence is thin, mixed, or the label is a close call.
+- rationale: one or two sentences citing the files or body that support the label.
+- Summary: `affected_area` and `summary` from step 1. Trust them when they match the files; if they conflict, prefer the files.
+- Title: always first in Input; may be an empty string. Weak context only; do not classify from it alone.
+- Body: the pull request description; may be empty or truncated.
+- Changed Files: totals (`additions`, `deletions`, `changes`) then each file as `#### {filename} ({status})` and a unified-diff patch when one exists. Status is typically added, modified, or removed. A file may have no patch (binary, omitted, or truncated). The list may be capped.
+
+## Do not
+
+- Do not make network or API calls. Do not fetch GitHub, clone a repository, follow links, browse the web, or use tools. Rely only on this prompt.
+- Do not invent files, diffs, or behavior that are not in the evidence.
+- Do not treat a missing patch as proof the file is empty; still use filename and status.
+- Do not classify from the title alone, or when the title contradicts body and files.
+- Do not invent a category outside the allowed list.
+
+## Output
+
+Reply with JSON only: no markdown fences, no commentary.
+{"category":"...","confidence":0.0,"rationale":"..."}

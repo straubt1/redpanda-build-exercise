@@ -261,7 +261,7 @@ For records that did not skip-LLM:
 3. persist category, confidence, rationale, affected_area, source=llm
 4. after retries, unknown + source=fallback
 
-Prompts must instruct the model to use body and files, not title alone. Title is optional extra context.
+Prompts must instruct the model to use body and files, not title alone. `## Input` order is title, body, then files. Title may be an empty string.
 
 Confidence: persist the number. If below 0.5, do not add a second pass unless decisions.md was updated.
 

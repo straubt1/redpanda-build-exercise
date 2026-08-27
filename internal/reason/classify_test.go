@@ -83,7 +83,7 @@ func TestClassify_invalidCategoryRepairThenOK(t *testing.T) {
 	}
 }
 
-func TestClassify_promptPutsTitleAfterBodyAndFiles(t *testing.T) {
+func TestClassify_promptPutsTitleThenBodyThenFiles(t *testing.T) {
 	rec := &recording{replies: []string{
 		`{"affected_area":"x","summary":"y"}`,
 		`{"category":"refactor","confidence":0.4,"rationale":"rename"}`,
@@ -97,10 +97,23 @@ func TestClassify_promptPutsTitleAfterBodyAndFiles(t *testing.T) {
 		t.Fatalf("low confidence must still persist, got %+v", got.Confidence)
 	}
 	p := rec.prompts[0]
-	bi, ti := strings.Index(p, "UNIQUE_BODY_TOKEN"), strings.Index(p, "UNIQUE_TITLE_TOKEN")
-	pi := strings.Index(p, "UNIQUE_PATCH_TOKEN")
-	if pi < 0 || bi < 0 || ti < 0 || !(pi < ti && bi < ti) {
-		t.Fatalf("title must come after body and files in summarize prompt")
+	ti, bi := strings.Index(p, "UNIQUE_TITLE_TOKEN"), strings.Index(p, "UNIQUE_BODY_TOKEN")
+	if bi < 0 || ti < 0 || !(ti < bi) {
+		t.Fatalf("summarize Input must be title, then body")
+	}
+	if strings.Contains(p, "UNIQUE_PATCH_TOKEN") {
+		t.Fatalf("summarize Input must not include patches")
+	}
+	if len(rec.prompts) < 2 {
+		t.Fatalf("expected classify prompt, got %d calls", len(rec.prompts))
+	}
+	cp := rec.prompts[1]
+	if strings.Index(cp, "## Summary\n") < 0 || strings.Index(cp, "## Summary\n") > strings.Index(cp, "## Input\n") {
+		t.Fatalf("classify must put ## Summary before ## Input")
+	}
+	cpi := strings.Index(cp, "UNIQUE_PATCH_TOKEN")
+	if cpi < 0 || cpi < strings.Index(cp, "UNIQUE_BODY_TOKEN") {
+		t.Fatalf("classify Input must include patches after body")
 	}
 }
 

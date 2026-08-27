@@ -52,7 +52,7 @@ Status vocabulary:
 | Rules later | Append more rules to the same list |
 | Mixed trees | `.md` + code, or lockfile + code → **Model**, not a Rule |
 | Loop | Multi-step: **Summarize** (affected area + summary) then **Classification** (category + confidence + rationale). Not one prompt that returns three fields with no structure. |
-| Prompt files | Static instructions in `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt`), `//go:embed`. Go appends evidence (files, body, title last) and the classify-retry error line. Not templates; not loaded from disk at runtime. |
+| Prompt files | Static instructions in `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt`), `//go:embed`. Go appends `## Summary` (classify only), a `## Input` section (title, body, then changed-file totals), and the classify-retry error line. Classification Input includes per-file patches; Summarize does not. Title is always present; the value may be `""`. Not templates; not loaded from disk at runtime. |
 | Parse | In Go: take first `{...}` from dirty model text, trim/lowercase labels, retry on bad output, then `unknown`. |
 | `source` | `rule` (a Rule classified), `model` (Models classified), `fallback` (unknown after failure) |
 
@@ -179,3 +179,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — LLM instructions live in `internal/reason/prompts/` and are `//go:embed`’d. Evidence assembly stays in Go.
 - 2026-08-27 — Connect: max **1** opened-PR message per generate sweep (`batch_index() >= 1`).
 - 2026-08-27 — `task infra:up` starts the full Compose stack (including Connect, reason, serve). Ollama remains host-side.
+- 2026-08-27 — Model `## Input` order is title, body, then changed files. File totals (`additions`/`deletions`/`changes`) are summed from the fetched file list. Title may be `""`.
+- 2026-08-27 — Summarize Input is title, body, and change totals only. Classification Input also includes per-file patches.

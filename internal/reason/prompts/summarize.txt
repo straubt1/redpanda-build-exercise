@@ -1,3 +1,24 @@
-Summarize what this GitHub pull request changed.
-Use the PR body and changed files (including patches). Do not infer from the title alone.
-Reply with JSON only: {"affected_area":"...","summary":"..."}
+# Summarize a GitHub pull request
+
+This is step 1 of 2: produce a structured summary for a later classification step. You are not classifying yet. Use only the evidence in Input below.
+
+## How to summarize
+
+- Ground the summary in the title, body, and change totals. Do not infer a file-level diff.
+- affected_area: a short noun phrase for the subsystem, package, or surface that changed (for example "auth middleware" or "CLI flags"). Not a category label such as feature or docs.
+- summary: one or two sentences on what the pull request is about. Be concrete. If evidence is thin, say so briefly rather than filling gaps.
+- Title: always first in Input; may be an empty string. Weak context only; do not decide from it alone.
+- Body: the pull request description; may be empty or truncated.
+- Changed Files: totals only (`additions`, `deletions`, `changes`). No per-file list or patches.
+
+## Do not
+
+- Do not make network or API calls. Do not fetch GitHub, clone a repository, follow links, browse the web, or use tools. Rely only on this prompt.
+- Do not classify the PR (no category, confidence, or rationale).
+- Do not invent files, diffs, or behavior that are not in the evidence.
+- Do not decide from the title alone, or when the title contradicts the body and change totals.
+
+## Output
+
+Reply with JSON only: no markdown fences, no commentary.
+{"affected_area":"...","summary":"..."}

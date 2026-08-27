@@ -2,7 +2,7 @@
 
 Static instructions for the Summarize → Classification loop. Compiled into the `reason` binary with `//go:embed` (see `internal/reason/embed.go`). Edit these files, then rebuild `reason`. They are **not** templates: no `{{`. JSON examples are literal.
 
-Go still builds the evidence (changed files, truncated PR body, title last) and the parse-error line on classify retry.
+Go still builds `## Summary` (classify only), the `## Input` section (title, body, then changed-file totals — title always present, may be empty; classify also gets per-file patches), and the parse-error line on classify retry.
 
 | File | Loaded as | When |
 | --- | --- | --- |
@@ -12,8 +12,8 @@ Go still builds the evidence (changed files, truncated PR body, title last) and 
 
 ## Assembly order (tests lock this)
 
-1. **summarize:** `summarize.txt` → changed files → PR body → title last
-2. **classify:** `classify.txt` → Summary fields (`affected_area`, `summary`) → changed files → PR body → title last
+1. **summarize:** `summarize.txt` → `## Input` → title → body → changed-file totals (no per-file patches)
+2. **classify:** `classify.txt` → `## Summary` → `## Input` → title → body → changed-file totals + per-file patches
 3. **classify retry:** that classify prompt + blank line + `Your previous output was invalid (...).` + `classify_repair.txt`
 
 Not in these files: file list/patches, body truncation, title, Summary values, parse error text.

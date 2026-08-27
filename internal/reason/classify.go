@@ -10,9 +10,12 @@ type Completer interface {
 }
 
 type FileInput struct {
-	Filename string
-	Status   string
-	Patch    string
+	Filename  string
+	Status    string
+	Patch     string
+	Additions int
+	Deletions int
+	Changes   int
 }
 
 type Input struct {
