@@ -20,9 +20,10 @@ Status vocabulary:
 | Source | GitHub public events: `GET https://api.github.com/events` |
 | Auth | `GITHUB_TOKEN` (required). User-Agent required on all GitHub calls (Connect and Go). |
 | Language | Go |
-| LLM runtime | Ollama on the **host** (not a Compose service). The app container reaches it at `host.docker.internal:11434`. |
-| Serve | Simple web UI. No framework requirement (`net/http` is enough). |
-| Result store | Postgres only. The worker writes. Serve reads Postgres. No result topic for v1. |
+| LLM runtime | Ollama on the **host** (not a Compose service). **`reason`** reaches it at `host.docker.internal:11434`. |
+| Serve | Compose service **`serve`**: HTML + JSON API. Reads Postgres only. |
+| Reason | Compose service **`reason`**: consume topic, enrich, skip-LLM / extract→classify, upsert Postgres. |
+| Result store | Postgres only. **`reason`** writes. **`serve`** reads. No result topic for v1. |
 | Dev CLI | [Task](https://taskfile.dev/) (`Taskfile.yml` at repo root). Leaf tasks for inspect/run; composites stitch them later. `.reference/Taskfile.yml` is not the spec. |
 
 ### Connect
@@ -67,8 +68,11 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Postgres db/user/db name | `triage` / `triage` / `triage` | |
 | Table | `pr_triages` | PK `event_id` |
 | Connect config path | `connect/ingest.yaml` | |
-| Go entrypoint | `cmd/app/main.go` | One process: Kafka consumer **and** HTTP serve |
-| HTTP port | `8080` | |
+| Go entrypoints | `cmd/reason/main.go`, `cmd/serve/main.go` | Two Compose services, two binaries. Same module. |
+| HTTP port | `8080` | Compose publishes `8080`. |
+| UI CSS | Pico CSS v2 (CDN) | Table: [picocss.com/docs/table](https://picocss.com/docs/table). Use classful Pico so `.striped` works. |
+| Table sort | Query `sort` + `dir` | Default `classified_at` `desc`. Same params on HTML and JSON. Allowlist columns (no raw SQL identifiers). |
+| JSON API | `GET /api/triages` | Same row set as `GET /`. |
 | GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 4** opened PRs per sweep (`batch_index() >= 4` → drop) before cache. Cache still drops duplicate `id`s. |
 | Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
@@ -102,7 +106,7 @@ State these if asked in a walkthrough.
 4. Skip-LLM file rules use the **fetched** file list, never the event payload.
 5. Title, author, and action may be stored and shown; they are not the classification input for the model.
 6. “Several prompts” means **distinct steps** (extract vs classify), not three ways of asking for the same label.
-7. One Go binary for worker + serve is acceptable for a local demo; split processes if serve and worker need different scale (not v1).
+7. **`reason`** consumes the work topic and writes Postgres. **`serve`** only reads Postgres and hosts HTTP. Hitting the web page does not classify.
 8. Ollama speaks an OpenAI-compatible HTTP API from the Go service. Connect must not call it. The model process is on the host; Compose does not run `ollama/ollama`.
 9. Public GitHub is a **demo dataset** standing in for an internal “opened PRs in our orgs” feed (customer story still open).
 10. Docker Desktop on Mac can reach host Ollama at `host.docker.internal:11434`.
@@ -127,7 +131,6 @@ Do not silently resolve these into architecture-changing behavior.
 - Bot / draft filters in Connect
 - File and patch size caps
 - Whether to store raw model text
-- HTML vs JSON-first page (both fine; pick in Phase 7)
 - Hosted Claude/OpenAI as a second backend (noted as a future option; v1 is Ollama)
 - Topic-per-label or a result topic (v1 is Postgres column only)
 - Batching LLM calls
@@ -160,3 +163,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Phase 3: enrichment evidence lives in `rationale` (`body_len` + filename/status). No `files_json` column. Body and files stay in memory for later phases.
 - 2026-08-26 — Ollama runs on the **host**, not Compose. Model working default `qwen2.5:14b` (`OLLAMA_MODEL` in Taskfile). Tasks: `ollama:up`, `ollama:logs`, `ollama:down`, `ollama:check`.
 - 2026-08-26 — App reaches host Ollama at `host.docker.internal:11434`. Do not `extra_hosts` that name to `host-gateway` on Docker Desktop (it became `172.17.0.1` and connection refused).
+- 2026-08-26 — Phase 7 UI: Pico CSS tables, sortable via `sort`/`dir`, JSON at `GET /api/triages`. Still `net/http`, no SPA.
+- 2026-08-26 — Split Go: Compose **`reason`** (Kafka + GitHub + Ollama + upsert) vs **`serve`** (HTML + JSON, Postgres read). Former `app` service is `reason`.

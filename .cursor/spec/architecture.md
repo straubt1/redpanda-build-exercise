@@ -23,17 +23,24 @@ GET https://api.github.com/events
         │
         ▼
 ┌──────────────────────────────────────┐
-│ GO WORKER + HTTP (one process)       │
+│ GO REASON (compose: reason)          │
 │  consume                             │
 │  GET pull + GET files                │
 │  skip-LLM rules or extract→classify  │
 │  parse / retry / unknown             │
 │  upsert Postgres                     │
-│  HTTP reads Postgres                 │
 └──────────────────────────────────────┘
         │
         ▼
   postgres table pr_triages
+        │
+        ▼
+┌──────────────────────────────────────┐
+│ GO SERVE (compose: serve)            │
+│  GET /  HTML table (Pico)            │
+│  GET /api/triages  JSON              │
+│  GET /healthz                        │
+└──────────────────────────────────────┘
         │
         ▼
   browser  GET /
@@ -234,18 +241,33 @@ Upsert: `INSERT ... ON CONFLICT (event_id) DO UPDATE`.
 
 ## Serve
 
-v1: `GET /` HTML table of recent rows (newest first). `GET /healthz` for Compose.
+Compose service **`serve`**. Separate binary (`cmd/serve`). Reads Postgres only — does not consume Kafka or call Ollama.
 
-Show: repo, pr number (link), title, category, confidence, affected area, rationale, source, time.
+v1, `localhost:8080`:
 
-Plain CSS, no SPA. Usable at `localhost:8080`.
+- `GET /` — HTML table of `pr_triages`. Default newest first (`classified_at` desc).
+- `GET /api/triages` — JSON of the **same** rows (same filters/sort). `Content-Type: application/json`.
+- `GET /healthz` — 200 if Postgres ping succeeds.
+
+Show: repo, pr number (link `pr_url`), title, category, confidence, affected area, rationale, source, time.
+
+**CSS:** [Pico CSS table](https://picocss.com/docs/table) via CDN (`@picocss/pico@2`). Classful stylesheet so `table.striped` works. No SPA, no JS framework.
+
+**Sort:** query params `sort` and `dir` (`asc`|`desc`). Column headers on `GET /` are links that toggle dir. Allowlist `sort` to real columns (e.g. `classified_at`, `category`, `repo`, `title`, `confidence`, `source`). Reject unknown `sort` with 400 on the API; HTML falls back to default. HTML and JSON share one list/query function.
+
+Empty table: visible empty state, not a 500.
+
+## Reason
+
+Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, fetches GitHub, skip-LLM or LLM loop, upserts `pr_triages`. No host port. Needs Kafka, Postgres, `GITHUB_TOKEN`, host Ollama at `host.docker.internal:11434`.
 
 ## Compose (target for the last infra phase)
 
-Services: `redpanda`, `connect`, `postgres`, `app`. Local inspect: Console `:8081`, pgAdmin `:8082` (not the product UI). **Ollama is not a Compose service** — it runs on the host (`task ollama:up`). The app calls `host.docker.internal:11434`.
+Services: `redpanda`, `connect`, `postgres`, **`reason`**, **`serve`**. Local inspect: Console `:8081`, pgAdmin `:8082` (not the product UI). **Ollama is not a Compose service** — it runs on the host (`task ollama:up`). **`reason`** calls `host.docker.internal:11434`.
 
 - Redpanda: `--mode=dev-container`.
-- App waits for broker + postgres. Host model: `ollama pull` of `OLLAMA_MODEL` (see Taskfile / `decisions.md`).
+- **`reason`** waits for broker + postgres. Host model: `ollama pull` of `OLLAMA_MODEL`.
+- **`serve`** waits for postgres; publishes host **8080**. No Kafka, GitHub, or Ollama.
 - `.env` gitignored. `.env.example` lists `GITHUB_TOKEN` and any future LLM keys (empty).
 - Connect gets the token from env. Do not bake secrets into YAML.
 
@@ -259,7 +281,7 @@ Keep these as obvious lists/functions, not scattered `if`s:
 2. Skip-LLM rule list (Go).
 3. Category enum + normalize (Go).
 4. After-classify hook: e.g. if `security` and confidence high, produce an extra topic later.
-5. Topic JSON + table columns: adding a field should touch project mapping, struct, upsert, HTML — in obvious places.
+5. Topic JSON + table columns: adding a field should touch project mapping, struct, upsert, HTML **and** `/api/triages` — in obvious places.
 
 ## What not to build
 

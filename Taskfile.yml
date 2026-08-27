@@ -29,7 +29,7 @@ tasks:
           echo ".env already exists"
         fi
         if [ -z "${GITHUB_TOKEN:-}" ]; then
-          echo "WARNING: GITHUB_TOKEN is empty (needed for github:events, github:pull, Connect, and the app)"
+          echo "WARNING: GITHUB_TOKEN is empty (needed for github:events, github:pull, Connect, and reason)"
         else
           echo "GITHUB_TOKEN is set"
         fi
@@ -58,19 +58,39 @@ tasks:
       - |
         echo "Connect started — next: task topic:consume   or   task logs SERVICE=connect"
 
-  app:up:
-    desc: Start Go worker (consume, enrich from GitHub, upsert Postgres)
+  reason:up:
+    desc: Start reason (consume topic, GitHub, Ollama, upsert Postgres)
     deps: [infra:up]
     cmds:
       - |
         set -euo pipefail
         if [ -z "${GITHUB_TOKEN:-}" ]; then
-          echo "GITHUB_TOKEN must be set in .env for the worker to fetch PRs" >&2
+          echo "GITHUB_TOKEN must be set in .env for reason to fetch PRs" >&2
           exit 1
         fi
-      - "{{.COMPOSE}} up -d --build app"
+      - "{{.COMPOSE}} up -d --build --remove-orphans reason"
       - |
-        echo "App started — next: task logs SERVICE=app  or  task db:psql"
+        echo "reason started — next: task logs SERVICE=reason  or  task db:psql"
+
+  reason:down:
+    desc: Stop reason (worker keeps Postgres; serve can stay up)
+    cmds:
+      - "{{.COMPOSE}} stop reason"
+      - echo "reason stopped"
+
+  serve:up:
+    desc: Start serve (HTML + JSON API on :8080)
+    deps: [infra:up]
+    cmds:
+      - "{{.COMPOSE}} up -d --build --remove-orphans serve"
+      - |
+        echo "serve started — http://localhost:8080  JSON: http://localhost:8080/api/triages  logs: task logs SERVICE=serve"
+
+  serve:down:
+    desc: Stop serve (reason can keep classifying)
+    cmds:
+      - "{{.COMPOSE}} stop serve"
+      - echo "serve stopped"
 
   test:
     desc: Run Go tests
@@ -80,7 +100,7 @@ tasks:
   infra:down:
     desc: Stop infra (keeps volumes)
     cmds:
-      - "{{.COMPOSE}} stop app connect pgadmin console redpanda postgres"
+      - "{{.COMPOSE}} stop serve reason connect pgadmin console redpanda postgres"
 
   infra:down:clean:
     desc: Stop infra and delete volumes (wipes Postgres data and topic log)

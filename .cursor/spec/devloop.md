@@ -4,7 +4,7 @@ How we run and inspect the pipeline while building. Runtime is still Docker Comp
 
 Install [Task](https://taskfile.dev/) on the host (`brew install go-task`). Repo root: `Taskfile.yml`. `task` with no args lists targets (`default` → `task --list`).
 
-Do not treat `.reference/Taskfile.yml` as canonical. Names below match **this** spec (one Go process, Ollama on the **host**, labels including `unknown`).
+Do not treat `.reference/Taskfile.yml` as canonical. Names below match **this** spec (two Go processes: **reason** + **serve**, Ollama on the **host**, labels including `unknown`).
 
 ---
 
@@ -119,7 +119,8 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 
 | Task | Does |
 | --- | --- |
-| `app:up` | `deps: [infra:up]`, require token, `compose up -d --build app` (consume + upsert) |
+| `reason:up` | `deps: [infra:up]`, require token, `compose up -d --build reason` (consume + upsert). Compose service was renamed from `app`. |
+| `reason:down` | `compose stop reason` |
 
 ### Phase 3
 
@@ -154,6 +155,13 @@ Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced w
 | `sim:replay` | `sim:reset` then `sim:produce` |
 
 Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.
+
+### Phase 7
+
+| Task | Does |
+| --- | --- |
+| `serve:up` | `deps: [infra:up]`, `compose up -d --build serve` (HTML + JSON on `:8080`) |
+| `serve:down` | `compose stop serve` (`reason` can keep running) |
 
 ### Later (do not implement early)
 

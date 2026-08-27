@@ -6,6 +6,7 @@ Host ports come from `docker-compose.yml` (`task infra:up`).
 
 | Host | Service | Use |
 | --- | --- | --- |
+| `localhost:8080` | `serve` | HTML table + JSON API (`/api/triages`, `/healthz`). `task serve:up` |
 | `localhost:5432` | `postgres` | PostgreSQL (`triage` / `triage` / `triage`). `task db:psql` |
 | `localhost:19092` | `redpanda` | Kafka API **from the host** |
 | `localhost:8081` | `console` | [Redpanda Console](http://localhost:8081) — browse topics and messages |
@@ -13,7 +14,9 @@ Host ports come from `docker-compose.yml` (`task infra:up`).
 
 `connect` has **no host port**. It polls GitHub and produces to Kafka on the Compose network (`redpanda:9092`). Logs: `task logs SERVICE=connect`.
 
-`app` has **no host port** this phase. It consumes `github.pr.opened`, GETs PR body/files, skip-LLM or extract→classify via **host** Ollama (`host.docker.internal:11434`), and upserts Postgres. Logs: `task logs SERVICE=app`. Start: `task ollama:up` then `task app:up`.
+`reason` has **no host port**. It consumes `github.pr.opened`, GETs PR body/files, skip-LLM or extract→classify via **host** Ollama (`host.docker.internal:11434`), and upserts Postgres. Logs: `task logs SERVICE=reason`. Start: `task ollama:up` then `task reason:up`. Stop: `task reason:down`.
+
+`serve` only reads Postgres and hosts `http://localhost:8080`. It does not consume Kafka or call Ollama. Start: `task serve:up`. Stop: `task serve:down`. Stopping one Go service does not stop the other.
 
 Inside the Compose network, Kafka is **`redpanda:9092`**. Tasks that `exec` into the Redpanda container (for example `task topic:consume`) use that address, not `19092`.
 

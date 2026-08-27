@@ -43,6 +43,22 @@ func FromEnv() (Config, error) {
 	return cfg, nil
 }
 
+type ServeConfig struct {
+	PostgresDSN string
+	HTTPAddr    string
+}
+
+func ServeFromEnv() (ServeConfig, error) {
+	cfg := ServeConfig{
+		PostgresDSN: getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
+		HTTPAddr:    getenv("HTTP_ADDR", ":8080"),
+	}
+	if cfg.PostgresDSN == "" {
+		return ServeConfig{}, fmt.Errorf("POSTGRES_DSN is empty")
+	}
+	return cfg, nil
+}
+
 func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

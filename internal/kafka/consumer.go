@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/straubt1/redpanda-build-exercise/internal/applog"
@@ -34,14 +35,24 @@ func (c *Consumer) Close() {
 func (c *Consumer) Poll(ctx context.Context) ([]*kgo.Record, error) {
 	fetches := c.client.PollFetches(ctx)
 	if errs := fetches.Errors(); len(errs) > 0 {
+		var fatal error
 		for _, e := range errs {
 			if e.Err == ctx.Err() {
 				return nil, ctx.Err()
 			}
+			// Informational: client already reset after a topic recreate (sim:reset).
+			var lost *kgo.ErrDataLoss
+			if errors.As(e.Err, &lost) {
+				applog.Info.Printf("kafka log truncated topic=%s partition=%d: %v", e.Topic, e.Partition, e.Err)
+				continue
+			}
 			applog.Err.Printf("kafka fetch error topic=%s partition=%d: %v", e.Topic, e.Partition, e.Err)
+			if fatal == nil {
+				fatal = e.Err
+			}
 		}
-		if fetches.NumRecords() == 0 {
-			return nil, fmt.Errorf("kafka fetch: %w", errs[0].Err)
+		if fatal != nil && fetches.NumRecords() == 0 {
+			return nil, fmt.Errorf("kafka fetch: %w", fatal)
 		}
 	}
 

@@ -294,31 +294,44 @@ Verify Phase 6. Confirm at least one llm-sourced row and one unknown path (force
 ```
 Implement Phase 7 only from .cursor/spec/.
 
-Same Go process: GET / renders an HTML table of recent pr_triages (newest first). Link pr_url. Show category, confidence, affected_area, rationale, source.
+Two Compose services (do not put HTTP on reason):
 
-GET /healthz returns 200 if Postgres ping succeeds.
+- **reason** — existing worker, renamed from `app`. No host port.
+- **serve** — `cmd/serve`. Host **8080**. Postgres read only.
 
-No JS framework. Readable on a laptop browser.
+serve:
+- GET / — HTML table of pr_triages (Pico CSS table, striped). Link pr_url. Show category, confidence, affected_area, rationale, source, time.
+- GET /api/triages — JSON of the same rows (same sort).
+- GET /healthz — 200 if Postgres ping succeeds.
+
+Sorting: query params sort + dir (default classified_at desc). Table headers toggle sort. Allowlist columns; HTML and JSON share one query.
+
+Pico: CDN @picocss/pico@2 classful CSS so table.striped works (https://picocss.com/docs/table). No SPA / no JS framework.
 
 Verify Phase 7.
 ```
 
 ### In scope
 
-- HTML + health
-- Compose port publish `8080`
+- Rename Compose `app` → `reason`; add `serve`
+- HTML (Pico table) + JSON API + sort + health
+- Compose port publish `8080` on **serve**
 
 ### Out of scope
 
-- Auth, websockets, SPA
+- Auth, websockets, SPA, JS table libraries
+- Classifying from the web request
 
 ### Verify
 
-- [ ] Open `http://localhost:8080` — rows visible, including rule and llm sources if present
+- [ ] `reason` has no host port; `serve` is `http://localhost:8080`
+- [ ] Open `http://localhost:8080` — Pico-styled table, rows visible (rule and llm sources if present)
+- [ ] Column header click / `?sort=&dir=` reorders rows
+- [ ] `GET /api/triages` JSON matches the table; `?sort=category&dir=asc` works
 - [ ] PR link opens GitHub
 - [ ] Empty table is a clear empty state, not a 500
 - [ ] `/healthz` is 200 while Postgres is up
-
+- [ ] Stopping `serve` does not stop `reason` (and vice versa)
 ---
 
 ## Phase 8 — One-command local repro
@@ -328,7 +341,7 @@ Verify Phase 7.
 ```
 Implement Phase 8 only from .cursor/spec/.
 
-Make docker compose up the pipeline: redpanda, connect, postgres, app. Ollama stays on the host (`task ollama:up` before or beside compose).
+Make docker compose up the pipeline: redpanda, connect, postgres, reason, serve. Ollama stays on the host (`task ollama:up` before or beside compose).
 
 App Dockerfile is reproducible. Connect waits for Redpanda. App waits for broker + postgres.
 

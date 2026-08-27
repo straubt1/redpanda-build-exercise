@@ -1,4 +1,4 @@
-# Phase 0–6: Postgres + Redpanda + Connect + app. Ollama runs on the host, not in Compose.
+# Phase 0–7: reason (worker) + serve (HTTP). Ollama runs on the host, not in Compose.
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
@@ -85,8 +85,11 @@ services:
     command:
       - cp /tmp/pgpass /pgpass && chown 5050:5050 /pgpass && chmod 600 /pgpass && exec /entrypoint.sh
 
-  app:
-    build: .
+  reason:
+    build:
+      context: .
+      args:
+        PACKAGE: ./cmd/reason
     depends_on:
       redpanda:
         condition: service_healthy
@@ -101,6 +104,21 @@ services:
       GITHUB_USER_AGENT: redpanda-build-exercise
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:14b}
+    restart: unless-stopped
+
+  serve:
+    build:
+      context: .
+      args:
+        PACKAGE: ./cmd/serve
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
+      HTTP_ADDR: :8080
+    ports:
+      - "8080:8080"
     restart: unless-stopped
 
 volumes:

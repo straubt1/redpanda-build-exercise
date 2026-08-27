@@ -20,6 +20,6 @@ func main() {
 	defer stop()
 
 	if err := worker.Run(ctx, cfg); err != nil {
-		applog.Err.Fatalf("worker: %v", err)
+		applog.Err.Fatalf("reason: %v", err)
 	}
 }
