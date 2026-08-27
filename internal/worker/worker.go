@@ -43,11 +43,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 	defer c.Close()
 
 	// Connect to the Github API
-	gh := githubclient.New(cfg.GitHubToken, cfg.GitHubUserAgent)
+	gh := githubclient.New(cfg.GitHubToken, cfg.GitHubUserAgent, cfg.MaxNumberFiles, cfg.MaxFilePatchSize)
 	ollama := llm.New(cfg.OllamaURL, cfg.OllamaModel)
 
-	applog.Info.Printf("consuming topic=%s group=%s brokers=%v ollama=%s model=%s",
-		cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers, cfg.OllamaURL, cfg.OllamaModel)
+	applog.Info.Printf("consuming topic=%s group=%s brokers=%v ollama=%s model=%s max_files=%d max_patch=%d",
+		cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers, cfg.OllamaURL, cfg.OllamaModel,
+		cfg.MaxNumberFiles, cfg.MaxFilePatchSize)
 
 	for { // Loop indefinitely, polling for new messages from Kafka
 		records, err := c.Poll(ctx)

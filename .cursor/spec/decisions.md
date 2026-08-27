@@ -83,7 +83,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
 | Lockfile names | See list below | Widen later via the same Rule list |
-| File budget | Max **20** files; each patch truncated to **4000** chars; filenames + status always kept. Classify Input marks a cut patch with `[truncated]` on the file heading. | Open to retune |
+| File budget | Max **20** files (`REASON_MAX_NUMBER_FILES`); each patch truncated to **4000** chars (`REASON_MAX_FILE_PATCH_SIZE`); filenames + status always kept. Classify Input marks a cut patch with `[truncated]` on the file heading. Override in `.env`. | Open to retune |
 | Bot filter | **None** in v1 | Dependabot PRs may still flow. Extension-shaped later. |
 | Draft PRs | **Keep** (no filter) | Open to drop drafts in Connect later |
 | Task binary | `task` (go-task) on the host | `brew install go-task` |
@@ -188,3 +188,4 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — Classify Input marks a cut patch with `[truncated]` on `#### {filename} ({status})`. classify.txt splits counts vs per-file vs how to read a unified-diff patch.
 - 2026-08-27 — `ollama:up` starts serve only if `GET /api/ps` is not OK. `ollama:down` is `pgrep ollama` then `/bin/kill` (Task's shell has no `kill` builtin).
 - 2026-08-27 — Console and pgAdmin sit on Compose profile `debug`. They are not started by `docker compose up` / `task infra:up`. Start with `docker compose --profile debug up -d`.
+- 2026-08-27 — Reason file budget is `REASON_MAX_NUMBER_FILES` (default 20) and `REASON_MAX_FILE_PATCH_SIZE` (default 4000). Override in `.env`; Compose passes both into the reason service.

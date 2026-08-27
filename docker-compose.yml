@@ -71,6 +71,8 @@ services:
       GITHUB_USER_AGENT: redpanda-build-exercise
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:14b}
+      REASON_MAX_NUMBER_FILES: ${REASON_MAX_NUMBER_FILES:-20}
+      REASON_MAX_FILE_PATCH_SIZE: ${REASON_MAX_FILE_PATCH_SIZE:-4000}
     # Uncomment to enable debug logging without having to drop into the container
     volumes:
       - ./.local/reason-logs:/logs

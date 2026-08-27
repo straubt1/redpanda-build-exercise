@@ -18,19 +18,29 @@ const (
 )
 
 type Client struct {
-	token     string
-	userAgent string
-	http      *http.Client
+	token         string
+	userAgent     string
+	maxFiles      int
+	maxPatchChars int
+	http          *http.Client
 }
 
-func New(token, userAgent string) *Client {
+func New(token, userAgent string, maxFiles, maxPatchChars int) *Client {
 	if userAgent == "" {
 		userAgent = "redpanda-build-exercise"
 	}
+	if maxFiles <= 0 {
+		maxFiles = MaxFiles
+	}
+	if maxPatchChars <= 0 {
+		maxPatchChars = MaxPatchChars
+	}
 	return &Client{
-		token:     token,
-		userAgent: userAgent,
-		http:      &http.Client{Timeout: 30 * time.Second},
+		token:         token,
+		userAgent:     userAgent,
+		maxFiles:      maxFiles,
+		maxPatchChars: maxPatchChars,
+		http:          &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -103,7 +113,7 @@ func (c *Client) Fetch(ctx context.Context, repo string, prNumber int) (*Enrichm
 		Body:    pr.Body,
 		HTMLURL: pr.HTMLURL,
 		Author:  pr.User.Login,
-		Files:   applyBudget(files),
+		Files:   c.applyBudget(files),
 	}, nil
 }
 
@@ -121,7 +131,7 @@ func (c *Client) getPull(ctx context.Context, owner, repo string, n int) (*pullJ
 }
 
 func (c *Client) getFiles(ctx context.Context, owner, repo string, n int) ([]File, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/files?per_page=%d", owner, repo, n, MaxFiles)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/files?per_page=%d", owner, repo, n, c.maxFiles)
 	b, err := c.get(ctx, url)
 	if err != nil {
 		return nil, err
@@ -161,13 +171,13 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	return body, nil
 }
 
-func applyBudget(files []File) []File {
-	if len(files) > MaxFiles {
-		files = files[:MaxFiles]
+func (c *Client) applyBudget(files []File) []File {
+	if len(files) > c.maxFiles {
+		files = files[:c.maxFiles]
 	}
 	for i := range files {
-		if len(files[i].Patch) > MaxPatchChars {
-			files[i].Patch = files[i].Patch[:MaxPatchChars]
+		if len(files[i].Patch) > c.maxPatchChars {
+			files[i].Patch = files[i].Patch[:c.maxPatchChars]
 			files[i].Truncated = true
 		}
 	}
