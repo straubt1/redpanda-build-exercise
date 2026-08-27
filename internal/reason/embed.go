@@ -2,11 +2,11 @@ package reason
 
 import _ "embed"
 
-// Instruction prefixes for extract → classify. Evidence (files, body, title) is appended in loop.go.
+// Instruction prefixes for Summarize → Classification. Evidence (files, body, title) is appended in prompt.go.
 // See prompts/README.md.
 
-//go:embed prompts/extract.txt
-var extractInstructions string
+//go:embed prompts/summarize.txt
+var summarizeInstructions string
 
 //go:embed prompts/classify.txt
 var classifyInstructions string

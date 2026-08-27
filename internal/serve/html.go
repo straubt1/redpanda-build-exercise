@@ -32,7 +32,7 @@ const pageHTML = `<!DOCTYPE html>
   <div class="stats">
     <div class="stat"><span>Total</span><b>{{.Stats.Total}}</b></div>
     <div class="stat"><span>Not reasoned</span><b>{{.Stats.Pending}}</b></div>
-    <div class="stat"><span>LLM</span><b>{{.Stats.LLM}}</b></div>
+    <div class="stat"><span>Model</span><b>{{.Stats.Model}}</b></div>
     <div class="stat"><span>Rule</span><b>{{.Stats.Rule}}</b></div>
   </div>
   <table>
@@ -45,12 +45,13 @@ const pageHTML = `<!DOCTYPE html>
         <th><a href="/?sort=confidence&amp;dir={{nextDir .Sort .Dir "confidence"}}">Conf</a></th>
         <th><a href="/?sort=source&amp;dir={{nextDir .Sort .Dir "source"}}">Source</a></th>
         <th>Area</th>
+        <th>Summary</th>
         <th>Rationale</th>
       </tr>
     </thead>
     <tbody>
       {{if not .Rows}}
-      <tr><td colspan="8" class="muted">No triages yet — wait for Connect to poll GitHub and the worker to classify.</td></tr>
+      <tr><td colspan="9" class="muted">No triages yet — wait for Connect to poll GitHub and the worker to classify.</td></tr>
       {{else}}
       {{range .Rows}}
       <tr>
@@ -61,6 +62,7 @@ const pageHTML = `<!DOCTYPE html>
         <td>{{fmtConf .Confidence}}</td>
         <td>{{.Source}}</td>
         <td>{{.AffectedArea}}</td>
+        <td>{{.Summary}}</td>
         <td>{{.Rationale}}</td>
       </tr>
       {{end}}

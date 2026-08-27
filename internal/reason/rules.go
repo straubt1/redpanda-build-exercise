@@ -1,23 +1,23 @@
-package skipllm
+package reason
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
 
-// Rule returns a category when the fetched file list is enough to skip the model.
-// First match in Default wins. Empty lists never match.
+// Rule returns a category when the fetched file list is enough to skip the Model.
+// First match in defaultRules wins. Empty lists never match.
 type Rule func(files []string) (category string, ok bool)
 
-// Default is the ordered skip-LLM list. Append later rules here, not in the worker loop.
-func Default() []Rule {
+func defaultRules() []Rule {
 	return []Rule{
 		allMarkdown,
 		allLockfiles,
 	}
 }
 
-func Match(rules []Rule, files []string) (category string, ok bool) {
+func match(rules []Rule, files []string) (category string, ok bool) {
 	for _, rule := range rules {
 		if cat, hit := rule(files); hit {
 			return cat, true
@@ -26,7 +26,23 @@ func Match(rules []Rule, files []string) (category string, ok bool) {
 	return "", false
 }
 
-func Rationale(category string) string {
+func matchRules(in Input) (Outcome, bool) {
+	names := make([]string, 0, len(in.Files))
+	for _, f := range in.Files {
+		names = append(names, f.Filename)
+	}
+	cat, ok := match(defaultRules(), names)
+	if !ok {
+		return Outcome{}, false
+	}
+	return Outcome{
+		Category:  cat,
+		Source:    "rule",
+		Rationale: ruleRationale(cat) + "; " + enrichmentRationale(in),
+	}, true
+}
+
+func ruleRationale(category string) string {
 	switch category {
 	case "docs":
 		return "all changed files are markdown"
@@ -35,6 +51,17 @@ func Rationale(category string) string {
 	default:
 		return ""
 	}
+}
+
+func enrichmentRationale(in Input) string {
+	if strings.TrimSpace(in.Body) == "" && len(in.Files) == 0 {
+		return "empty body and no files"
+	}
+	parts := make([]string, 0, len(in.Files))
+	for _, f := range in.Files {
+		parts = append(parts, f.Filename+" ("+f.Status+")")
+	}
+	return fmt.Sprintf("body_len=%d files=%d: %s", len(in.Body), len(in.Files), strings.Join(parts, ", "))
 }
 
 func allMarkdown(files []string) (string, bool) {

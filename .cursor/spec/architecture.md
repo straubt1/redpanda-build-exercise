@@ -26,7 +26,7 @@ GET https://api.github.com/events
 │ GO REASON (compose: reason)          │
 │  consume                             │
 │  GET pull + GET files                │
-│  skip-LLM rules or extract→classify  │
+│  Rules or Summarize→Classification   │
 │  parse / retry / unknown             │
 │  upsert Postgres                     │
 └──────────────────────────────────────┘
@@ -125,7 +125,7 @@ Cache: Connect `cache` resource, key `event_id`. Memory is fine for local demo (
 
 ## Reason (Go)
 
-**Job:** fetch what the feed omitted, skip when a rule is enough, otherwise run a loop, persist a valid row.
+**Job:** fetch what the feed omitted, classify with a Rule when that is enough, otherwise run Models, persist a valid row.
 
 ```text
  consume github.pr.opened
@@ -140,19 +140,19 @@ Cache: Connect `cache` resource, key `event_id`. Memory is fine for local demo (
        no
         │
         ▼
- skip-LLM list (first match wins)
+ Rules (first match wins)
    all paths end with .md     → docs, source=rule
    all paths in lockfile set  → dependency-bump, source=rule
         │
-     no match
+     no classification
         │
         ▼
- STEP 1 extract (model): affected area + what changed
+ STEP 1 Summarize (Model): affected area + summary
         parse; retry; else unknown + stop
         │
         ▼
- STEP 2 classify (model): category + confidence + rationale
-        using extract output + body + files (truncated)
+ STEP 2 Classification (Model): category + confidence + rationale
+        using Summary + body + files (truncated)
         parse; retry; else unknown
         │
         ▼
@@ -170,23 +170,23 @@ Respect file budget from `decisions.md`. Always keep `filename` and `status` (ad
 
 404 / 403: upsert `unknown`, store error, do not crash the consumer.
 
-### Skip-LLM
+### Rules
 
-Implement as a list of functions `(files) -> (category, ok)` so more rules can be added later without touching the loop.
+Implement as a list of functions `(files) -> (category, ok)` so more rules can be added later without touching the loop. A Rule either classifies or does not.
 
-- Zero files: do not skip; fall through to “not enough content” / model / `unknown` as in the flow.
-- All `.md`: includes `README.md`, `docs/foo.md`. A single `foo.mdx` or `foo.go` means **no** skip.
+- Zero files: do not match; fall through to “not enough content” / Model / `unknown` as in the flow.
+- All `.md`: includes `README.md`, `docs/foo.md`. A single `foo.mdx` or `foo.go` means **no** Rule hit.
 - All lockfiles: names in `decisions.md`. Case-sensitive as GitHub returns them.
 
-When skip-LLM fires: still persist repo, pr, title, url, file list summary if the schema allows. `confidence` may be null. `rationale` can be a short static string (“all changed files are markdown”).
+When a Rule fires: still persist repo, pr, title, url, file list summary if the schema allows. `confidence` may be null. `rationale` can be a short static string (“all changed files are markdown”).
 
 ### Model I/O
 
-Instruction prefixes are files under `internal/reason/prompts/` (`extract.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends changed files, truncated body, then title (last). See `internal/reason/prompts/README.md`.
+Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends changed files, truncated body, then title (last). See `internal/reason/prompts/README.md`.
 
-**Extract** must produce structured JSON, e.g. `{ "affected_area": string, "change_summary": string }`. Exact keys may vary; parse must be tolerant.
+**Summarize** must produce structured JSON, e.g. `{ "affected_area": string, "summary": string }`. Exact keys may vary; parse must be tolerant.
 
-**Classify** must produce `{ "category": string, "confidence": number, "rationale": string }`.
+**Classification** must produce `{ "category": string, "confidence": number, "rationale": string }`.
 
 `category` normalized: trim, lowercase, hyphenate spaces if needed. If not in the enum → retry once with a “label must be one of …” repair prompt, then `unknown`.
 
@@ -226,9 +226,10 @@ CREATE TABLE IF NOT EXISTS pr_triages (
   confidence      DOUBLE PRECISION,
   rationale       TEXT NOT NULL DEFAULT '',
   affected_area   TEXT NOT NULL DEFAULT '',
-  source          TEXT NOT NULL DEFAULT 'unknown', -- rule | llm | fallback
+  summary         TEXT NOT NULL DEFAULT '',
+  source          TEXT NOT NULL DEFAULT 'unknown', -- rule | model | fallback
   error           TEXT NOT NULL DEFAULT '',
-  received_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ,
   classified_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -239,7 +240,7 @@ CREATE INDEX IF NOT EXISTS pr_triages_classified_at ON pr_triages (classified_at
 
 Upsert: `INSERT ... ON CONFLICT (event_id) DO UPDATE`.
 
-`received_at`: parse topic `created_at` ISO string into `TIMESTAMPTZ`. Never insert a raw epoch number.
+`created_at`: parse topic `created_at` ISO string into `TIMESTAMPTZ`. Never insert a raw epoch number.
 
 ## Serve
 
@@ -251,11 +252,11 @@ v1, `localhost:8080`:
 - `GET /api/triages` — JSON of the **same** rows (same filters/sort) plus `stats`. `Content-Type: application/json`.
 - `GET /healthz` — 200 if Postgres ping succeeds.
 
-Show: when, repo, PR number (link `pr_url`) with title under it, category, confidence, source, affected area, rationale.
+Show: when, repo, PR number (link `pr_url`) with title under it, category, confidence, source, affected area, summary, rationale.
 
 **List cap:** inner query takes the **20** newest by `classified_at`; outer query applies `sort`/`dir`. Newest rows are always in the set.
 
-**Stats** (all rows, not just the 20): total; not reasoned (`source` not `llm` or `rule`); count `source=llm`; count `source=rule`. Shown above the table.
+**Stats** (all rows, not just the 20): total; not reasoned (`source` not `model` or `rule`); count `source=model`; count `source=rule`. Shown above the table.
 
 **When:** ISO timestamp in `<time datetime>`; a few lines of inline JS format the browser-local clock (`1:30 pm`) and set `title` to the full local datetime with seconds. No JS framework.
 
@@ -267,7 +268,7 @@ Empty table: visible empty state, not a 500.
 
 ## Reason
 
-Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, fetches GitHub, skip-LLM or LLM loop, upserts `pr_triages`. No host port. Needs Kafka, Postgres, `GITHUB_TOKEN`, host Ollama at `host.docker.internal:11434`.
+Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, fetches GitHub, Rules or Models, upserts `pr_triages`. No host port. Needs Kafka, Postgres, `GITHUB_TOKEN`, host Ollama at `host.docker.internal:11434`.
 
 ## Compose (target for the last infra phase)
 
@@ -286,7 +287,7 @@ Developer loop (Taskfile, how to dump `/events`, how to consume topics): [devloo
 Keep these as obvious lists/functions, not scattered `if`s:
 
 1. Action allowlist (Connect).
-2. Skip-LLM rule list (Go).
+2. Rule list (Go).
 3. Category enum + normalize (Go).
 4. After-classify hook: e.g. if `security` and confidence high, produce an extra topic later.
 5. Topic JSON + table columns: adding a field should touch project mapping, struct, upsert, HTML **and** `/api/triages` — in obvious places.
@@ -295,4 +296,4 @@ Keep these as obvious lists/functions, not scattered `if`s:
 
 - Connect SQL sink of classifications
 - Reason invoked only when someone hits the web page
-- Regex on `title` to assign `docs` / `dependency-bump` (that is the costume; skip-LLM is on **fetched files**)
+- Regex on `title` to assign `docs` / `dependency-bump` (that is the costume; Rules use **fetched files**)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/straubt1/redpanda-build-exercise/internal/applog"
@@ -13,12 +12,11 @@ import (
 	"github.com/straubt1/redpanda-build-exercise/internal/kafka"
 	"github.com/straubt1/redpanda-build-exercise/internal/llm"
 	"github.com/straubt1/redpanda-build-exercise/internal/reason"
-	"github.com/straubt1/redpanda-build-exercise/internal/skipllm"
 	"github.com/straubt1/redpanda-build-exercise/internal/store"
 )
 
-// Work is the Connect-projected topic payload. Title is not on /events; ignore if present.
-type Work struct {
+// Message is the Connect-projected topic payload.
+type Message struct {
 	EventID   string `json:"event_id"`
 	Repo      string `json:"repo"`
 	PRNumber  int    `json:"pr_number"`
@@ -29,25 +27,28 @@ type Work struct {
 }
 
 func Run(ctx context.Context, cfg config.Config) error {
+	// Connect to the database
 	db, err := store.Connect(ctx, cfg.PostgresDSN)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
+	// Connect to the Kafka
 	c, err := kafka.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
+	// Connect to the Github API
 	gh := githubclient.New(cfg.GitHubToken, cfg.GitHubUserAgent)
 	ollama := llm.New(cfg.OllamaURL, cfg.OllamaModel)
 
 	applog.Info.Printf("consuming topic=%s group=%s brokers=%v ollama=%s model=%s",
 		cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers, cfg.OllamaURL, cfg.OllamaModel)
 
-	for {
+	for { // Loop indefinitely, polling for new messages from Kafka
 		records, err := c.Poll(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -56,8 +57,8 @@ func Run(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 		for _, rec := range records {
-			// Handle the message and upsert the DB
-			if err := handle(ctx, db, gh, ollama, rec.Value); err != nil {
+			// Handle the message and upsert the DB - the main logic of the worker
+			if err := handleMessage(ctx, db, gh, ollama, rec.Value); err != nil {
 				return fmt.Errorf("upsert offset=%d: %w", rec.Offset, err)
 			}
 			// After a successful upsert: tell the consumer group this offset is done.
@@ -69,18 +70,88 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 }
 
-func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte) error {
+func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte) error {
 	// Parse the message from Kafka and Validate the data
-	var msg Work
-	if err := json.Unmarshal(raw, &msg); err != nil {
-		applog.Err.Printf("skip bad json: %v", err)
-		return nil
-	}
-	if msg.EventID == "" || msg.Repo == "" || msg.PRNumber == 0 {
-		applog.Err.Printf("skip incomplete message event_id=%q repo=%q pr=%d", msg.EventID, msg.Repo, msg.PRNumber)
+	msg, ok := parseMessage(raw)
+	if !ok {
 		return nil
 	}
 
+	// Enrich the data with GH API by fetching the PR data not in the kafka message
+	enr, err := enrich(ctx, gh, msg)
+	if err != nil {
+		return persistFetchFailure(ctx, db, msg, err)
+	}
+
+	// Apply the classification - this the top level classification of the PR after all needed data is fetched
+	out := reason.Classify(ctx, ollama, inputFrom(enr), msg.EventID)
+	return persist(ctx, db, msg, enr, out)
+}
+
+// Parse the message from Kafka and Validate the data
+func parseMessage(raw []byte) (Message, bool) {
+	var msg Message
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		applog.Err.Printf("skip bad json: %v", err)
+		return Message{}, false
+	}
+	if msg.EventID == "" || msg.Repo == "" || msg.PRNumber == 0 {
+		applog.Err.Printf("skip incomplete message event_id=%q repo=%q pr=%d", msg.EventID, msg.Repo, msg.PRNumber)
+		return Message{}, false
+	}
+	return msg, true
+}
+
+// Enrich the data with GH API by fetching the PR data not in the kafka message
+func enrich(ctx context.Context, gh *githubclient.Client, msg Message) (*githubclient.Enrichment, error) {
+	return gh.Fetch(ctx, msg.Repo, msg.PRNumber)
+}
+
+func inputFrom(enr *githubclient.Enrichment) reason.Input {
+	files := make([]reason.FileInput, 0, len(enr.Files))
+	for _, f := range enr.Files {
+		files = append(files, reason.FileInput{Filename: f.Filename, Status: f.Status, Patch: f.Patch})
+	}
+	return reason.Input{Title: enr.Title, Body: enr.Body, Files: files}
+}
+
+func persist(ctx context.Context, db *store.Store, msg Message, enr *githubclient.Enrichment, out reason.Outcome) error {
+	row := rowFromMessage(msg)
+	row.Title = enr.Title
+	if enr.HTMLURL != "" {
+		row.PRURL = enr.HTMLURL
+	}
+	if enr.Author != "" {
+		row.Author = enr.Author
+	}
+	row.Category = out.Category
+	row.Source = out.Source
+	row.Rationale = out.Rationale
+	row.Error = out.Error
+	row.Confidence = out.Confidence
+	row.AffectedArea = out.AffectedArea
+	row.Summary = out.Summary
+	if err := db.Upsert(ctx, row); err != nil {
+		return err
+	}
+	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d summarize_retries=%d classify_retries=%d",
+		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files), out.SummarizeRetries, out.ClassifyRetries)
+	return nil
+}
+
+func persistFetchFailure(ctx context.Context, db *store.Store, msg Message, fetchErr error) error {
+	status := githubclient.StatusOf(fetchErr)
+	applog.Err.Printf("github fetch event_id=%s repo=%s pr=%d status=%d: %v", msg.EventID, msg.Repo, msg.PRNumber, status, fetchErr)
+	row := rowFromMessage(msg)
+	row.Rationale = "github fetch failed"
+	row.Error = fetchErr.Error()
+	if err := db.Upsert(ctx, row); err != nil {
+		return err
+	}
+	return nil
+}
+
+func rowFromMessage(msg Message) store.Row {
 	row := store.Row{
 		EventID:   msg.EventID,
 		Repo:      msg.Repo,
@@ -93,84 +164,7 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollam
 		Rationale: "pending enrichment",
 	}
 	if t, err := time.Parse(time.RFC3339, msg.CreatedAt); err == nil {
-		row.ReceivedAt = &t
+		row.CreatedAt = &t
 	}
-
-	// Enrich the data with GH API by fetching the PR data not in the kafka message
-	enr, err := gh.Fetch(ctx, msg.Repo, msg.PRNumber)
-	// If the fetch fails, log the error and mark the row as failed - uncommon
-	if err != nil {
-		status := githubclient.StatusOf(err)
-		applog.Err.Printf("github fetch event_id=%s repo=%s pr=%d status=%d: %v", msg.EventID, msg.Repo, msg.PRNumber, status, err)
-		row.Rationale = "github fetch failed"
-		row.Error = err.Error()
-		if err := db.Upsert(ctx, row); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// Set the data - no classification has occurred yet
-	row.Title = enr.Title
-	if enr.HTMLURL != "" {
-		row.PRURL = enr.HTMLURL
-	}
-	if enr.Author != "" {
-		row.Author = enr.Author
-	}
-	row.Error = ""
-
-	// Apply the classification - this the top level classification of the PR after all needed data is fetched
-	applyClassification(ctx, ollama, &row, enr)
-
-	// Upsert the data to the DB the result
-	if err := db.Upsert(ctx, row); err != nil {
-		return err
-	}
-	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d",
-		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files))
-	return nil
-}
-
-func applyClassification(ctx context.Context, ollama reason.Completer, row *store.Row, enr *githubclient.Enrichment) {
-	if strings.TrimSpace(enr.Body) == "" && len(enr.Files) == 0 {
-		row.Rationale = "empty body and no files"
-		return
-	}
-	names := make([]string, 0, len(enr.Files))
-	for _, f := range enr.Files {
-		names = append(names, f.Filename)
-	}
-	if cat, ok := skipllm.Match(skipllm.Default(), names); ok {
-		row.Category = cat
-		row.Source = "rule"
-		row.Rationale = skipllm.Rationale(cat) + "; " + enrichmentRationale(enr)
-		applog.Info.Printf("skip-llm event_id=%s category=%s", row.EventID, cat)
-		return
-	}
-
-	files := make([]reason.FileInput, 0, len(enr.Files))
-	for _, f := range enr.Files {
-		files = append(files, reason.FileInput{Filename: f.Filename, Status: f.Status, Patch: f.Patch})
-	}
-	out := reason.ClassifyPR(ctx, ollama, reason.Input{Title: enr.Title, Body: enr.Body, Files: files}, row.EventID)
-	row.Category = out.Category
-	row.Source = out.Source
-	row.Rationale = out.Rationale
-	row.Error = out.Error
-	row.Confidence = out.Confidence
-	row.AffectedArea = out.AffectedArea
-	applog.Info.Printf("llm done event_id=%s category=%s source=%s extract_retries=%d classify_retries=%d",
-		row.EventID, out.Category, out.Source, out.ExtractRetries, out.ClassifyRetries)
-}
-
-func enrichmentRationale(enr *githubclient.Enrichment) string {
-	if strings.TrimSpace(enr.Body) == "" && len(enr.Files) == 0 {
-		return "empty body and no files"
-	}
-	parts := make([]string, 0, len(enr.Files))
-	for _, f := range enr.Files {
-		parts = append(parts, f.Filename+" ("+f.Status+")")
-	}
-	return fmt.Sprintf("body_len=%d files=%d: %s", len(enr.Body), len(enr.Files), strings.Join(parts, ", "))
+	return row
 }

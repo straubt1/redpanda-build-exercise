@@ -101,9 +101,9 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | --- | --- |
 | `default` | `task --list` |
 | `setup` | `.env` from example if missing; warn if `GITHUB_TOKEN` empty |
-| `infra:up` | Postgres + Redpanda + Console + pgAdmin; schema; create `{{.TOPIC}}` |
-| `infra:down` | Stop infra, keep volumes |
-| `infra:down:clean` | Stop infra and **delete volumes** (Postgres + topic log) |
+| `infra:up` | Full Compose stack (Postgres, Redpanda, Console, pgAdmin, Connect, reason, serve); schema; create `{{.TOPIC}}`. Requires `GITHUB_TOKEN`. |
+| `infra:down` | Stop that stack, keep volumes |
+| `infra:down:clean` | Stop stack and **delete volumes** (Postgres + topic log) |
 | `github:events` | `/events`: counts + opened PRs (`VERBOSE=1` for raw page) |
 | `topic:consume` | List topics + consume (`FOLLOW=1` to tail) |
 | `db:psql` | `psql` in the postgres container |
@@ -132,7 +132,7 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 
 | Task | Does |
 | --- | --- |
-| `test` | `go test ./...` (skip-LLM + parse/normalize). `CLI_ARGS` for `-run` |
+| `test` | `go test ./...` (Rules + parse/normalize). `CLI_ARGS` for `-run` |
 
 ### Host Ollama (not Compose)
 

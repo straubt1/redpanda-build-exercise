@@ -25,19 +25,22 @@ func (s *scripted) Complete(_ context.Context, prompt string) (string, error) {
 	return s.replies[i], nil
 }
 
-func TestClassifyPR_retriesThenSucceeds(t *testing.T) {
+func TestClassify_retriesThenSucceeds(t *testing.T) {
 	llm := &scripted{replies: []string{
 		"here is nothing useful",
 		"still not json",
-		`{"affected_area":"cli","change_summary":"adds a flag"}`,
+		`{"affected_area":"cli","summary":"adds a flag"}`,
 		`{"category":"feature","confidence":0.8,"rationale":"new CLI flag"}`,
 	}}
-	got := ClassifyPR(context.Background(), llm, sampleInput(), "evt-1")
-	if got.Source != "llm" || got.Category != "feature" {
+	got := Classify(context.Background(), llm, sampleInput(), "evt-1")
+	if got.Source != "model" || got.Category != "feature" {
 		t.Fatalf("%+v", got)
 	}
-	if got.ExtractRetries != 2 || got.ClassifyRetries != 0 {
-		t.Fatalf("retries extract=%d classify=%d", got.ExtractRetries, got.ClassifyRetries)
+	if got.SummarizeRetries != 2 || got.ClassifyRetries != 0 {
+		t.Fatalf("retries summarize=%d classify=%d", got.SummarizeRetries, got.ClassifyRetries)
+	}
+	if got.Summary != "adds a flag" || got.AffectedArea != "cli" {
+		t.Fatalf("summary %+v", got)
 	}
 	if llm.n != 4 {
 		t.Fatalf("calls=%d want 4", llm.n)
@@ -47,29 +50,29 @@ func TestClassifyPR_retriesThenSucceeds(t *testing.T) {
 	}
 }
 
-func TestClassifyPR_extractCapStopsWithoutClassify(t *testing.T) {
+func TestClassify_summarizeCapStopsWithoutClassify(t *testing.T) {
 	llm := &scripted{replies: []string{"nope", "nope", "nope", `{"category":"feature","confidence":1,"rationale":"should not run"}`}}
-	got := ClassifyPR(context.Background(), llm, sampleInput(), "evt-2")
+	got := Classify(context.Background(), llm, sampleInput(), "evt-2")
 	if got.Source != "fallback" || got.Category != "unknown" {
 		t.Fatalf("%+v", got)
 	}
 	if llm.n != MaxAttempts {
 		t.Fatalf("calls=%d want %d (must not spin)", llm.n, MaxAttempts)
 	}
-	if got.ExtractRetries != MaxAttempts-1 {
-		t.Fatalf("extract retries=%d", got.ExtractRetries)
+	if got.SummarizeRetries != MaxAttempts-1 {
+		t.Fatalf("summarize retries=%d", got.SummarizeRetries)
 	}
 }
 
-func TestClassifyPR_invalidCategoryRepairThenOK(t *testing.T) {
+func TestClassify_invalidCategoryRepairThenOK(t *testing.T) {
 	rec := &recording{}
 	rec.replies = []string{
-		`{"affected_area":"auth","change_summary":"middleware"}`,
+		`{"affected_area":"auth","summary":"middleware"}`,
 		`{"category":"not-a-label","confidence":0.9,"rationale":"x"}`,
 		`{"category":"security","confidence":0.7,"rationale":"auth check"}`,
 	}
-	got := ClassifyPR(context.Background(), rec, sampleInput(), "evt-3")
-	if got.Category != "security" || got.Source != "llm" {
+	got := Classify(context.Background(), rec, sampleInput(), "evt-3")
+	if got.Category != "security" || got.Source != "model" {
 		t.Fatalf("%+v", got)
 	}
 	if got.ClassifyRetries != 1 {
@@ -80,13 +83,13 @@ func TestClassifyPR_invalidCategoryRepairThenOK(t *testing.T) {
 	}
 }
 
-func TestClassifyPR_promptPutsTitleAfterBodyAndFiles(t *testing.T) {
+func TestClassify_promptPutsTitleAfterBodyAndFiles(t *testing.T) {
 	rec := &recording{replies: []string{
-		`{"affected_area":"x","change_summary":"y"}`,
+		`{"affected_area":"x","summary":"y"}`,
 		`{"category":"refactor","confidence":0.4,"rationale":"rename"}`,
 	}}
 	in := Input{Title: "UNIQUE_TITLE_TOKEN", Body: "UNIQUE_BODY_TOKEN", Files: []FileInput{{Filename: "a.go", Status: "modified", Patch: "UNIQUE_PATCH_TOKEN"}}}
-	got := ClassifyPR(context.Background(), rec, in, "evt-4")
+	got := Classify(context.Background(), rec, in, "evt-4")
 	if got.Category != "refactor" {
 		t.Fatalf("%+v", got)
 	}
@@ -97,7 +100,34 @@ func TestClassifyPR_promptPutsTitleAfterBodyAndFiles(t *testing.T) {
 	bi, ti := strings.Index(p, "UNIQUE_BODY_TOKEN"), strings.Index(p, "UNIQUE_TITLE_TOKEN")
 	pi := strings.Index(p, "UNIQUE_PATCH_TOKEN")
 	if pi < 0 || bi < 0 || ti < 0 || !(pi < ti && bi < ti) {
-		t.Fatalf("title must come after body and files in extract prompt")
+		t.Fatalf("title must come after body and files in summarize prompt")
+	}
+}
+
+func TestClassify_ruleSkipsModel(t *testing.T) {
+	llm := &scripted{replies: []string{`{"category":"feature","confidence":1,"rationale":"should not run"}`}}
+	in := Input{
+		Title: "docs",
+		Body:  "update readme",
+		Files: []FileInput{{Filename: "README.md", Status: "modified"}},
+	}
+	got := Classify(context.Background(), llm, in, "evt-rule")
+	if got.Source != "rule" || got.Category != "docs" {
+		t.Fatalf("%+v", got)
+	}
+	if llm.n != 0 {
+		t.Fatalf("model called %d times", llm.n)
+	}
+}
+
+func TestClassify_emptyContentSkipsModel(t *testing.T) {
+	llm := &scripted{replies: []string{`{"category":"feature","confidence":1,"rationale":"should not run"}`}}
+	got := Classify(context.Background(), llm, Input{Title: "only a title"}, "evt-empty")
+	if got.Source != "fallback" || got.Category != "unknown" {
+		t.Fatalf("%+v", got)
+	}
+	if llm.n != 0 {
+		t.Fatalf("model called %d times", llm.n)
 	}
 }
 

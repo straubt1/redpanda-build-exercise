@@ -111,12 +111,12 @@ func TestFirstObject_doesNotUseLastBrace(t *testing.T) {
 	}
 }
 
-func TestParseExtraction(t *testing.T) {
-	got, err := ParseExtraction("here: {\"affected_area\": \"auth\", \"change_summary\": \"adds middleware\"} done")
+func TestParseSummary(t *testing.T) {
+	got, err := ParseSummary("here: {\"affected_area\": \"auth\", \"summary\": \"adds middleware\"} done")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.AffectedArea != "auth" || got.ChangeSummary != "adds middleware" {
+	if got.AffectedArea != "auth" || got.Summary != "adds middleware" {
 		t.Fatalf("%+v", got)
 	}
 }

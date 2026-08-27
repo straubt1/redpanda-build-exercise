@@ -61,7 +61,7 @@ type File struct {
 	Patch    string `json:"patch"`
 }
 
-// Enrichment is the pull + files payload for later skip-LLM / model steps.
+// Enrichment is the pull + files payload for later Rules / Model steps.
 type Enrichment struct {
 	Title   string
 	Body    string

@@ -22,7 +22,7 @@ Status vocabulary:
 | Language | Go |
 | LLM runtime | Ollama on the **host** (not a Compose service). **`reason`** reaches it at `host.docker.internal:11434`. |
 | Serve | Compose service **`serve`**: HTML + JSON API. Reads Postgres only. |
-| Reason | Compose service **`reason`**: consume topic, enrich, skip-LLM / extract→classify, upsert Postgres. |
+| Reason | Compose service **`reason`**: consume topic, enrich, Rules or Summarize→Classification, upsert Postgres. |
 | Result store | Postgres only. **`reason`** writes. **`serve`** reads. No result topic for v1. |
 | Dev CLI | [Task](https://taskfile.dev/) (`Taskfile.yml` at repo root). Leaf tasks for inspect/run; composites stitch them later. `.reference/Taskfile.yml` is not the spec. |
 
@@ -47,13 +47,14 @@ Status vocabulary:
 | Idempotency | GitHub event `id` is cache key, message identity, and Postgres primary key |
 | Labels | `security`, `feature`, `refactor`, `docs`, `dependency-bump`, `unknown` |
 | `unknown` | Failure/fallback: cannot fetch enough content, or model output still unusable after retries, or label not in enum |
-| Skip-LLM | Ordered list of rules in Go, evaluated after fetch. Hits write a real label and **do not** call the model. |
-| Skip-LLM now | (1) every changed file ends with `.md` → `docs`. (2) every changed file is a lockfile → `dependency-bump`. |
-| Skip-LLM later | Append more rules to the same list |
-| Mixed trees | `.md` + code, or lockfile + code → **model**, not skip |
-| Loop | Multi-step: **extract** (what changed / affected area) then **classify** (label + confidence + rationale). Not one prompt that returns three fields with no structure. |
-| Prompt files | Static instructions in `internal/reason/prompts/` (`extract.txt`, `classify.txt`, `classify_repair.txt`), `//go:embed`. Go appends evidence (files, body, title last) and the classify-retry error line. Not templates; not loaded from disk at runtime. |
-| Parse | In Go: extract first `{...}` from dirty model text, trim/lowercase labels, retry on bad output, then `unknown`. |
+| Rules | Ordered list of non-model checks in Go, evaluated after fetch. A rule either classifies or does not. Hits write a real label and **do not** call a Model. |
+| Rules now | (1) every changed file ends with `.md` → `docs`. (2) every changed file is a lockfile → `dependency-bump`. |
+| Rules later | Append more rules to the same list |
+| Mixed trees | `.md` + code, or lockfile + code → **Model**, not a Rule |
+| Loop | Multi-step: **Summarize** (affected area + summary) then **Classification** (category + confidence + rationale). Not one prompt that returns three fields with no structure. |
+| Prompt files | Static instructions in `internal/reason/prompts/` (`summarize.txt`, `classify.txt`, `classify_repair.txt`), `//go:embed`. Go appends evidence (files, body, title last) and the classify-retry error line. Not templates; not loaded from disk at runtime. |
+| Parse | In Go: take first `{...}` from dirty model text, trim/lowercase labels, retry on bad output, then `unknown`. |
+| `source` | `rule` (a Rule classified), `model` (Models classified), `fallback` (unknown after failure) |
 
 ### Cache consequence (locked behavior, not a preference)
 
@@ -74,14 +75,14 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | UI CSS | Inline styles from `.reference/index.html` | Warm gray page (`#f7f8f5`), white table, uppercase headers, green links (`#0b5`). No Pico. |
 | Table sort | Query `sort` + `dir` | Default `classified_at` `desc`. Same params on HTML and JSON. Allowlist columns (no raw SQL identifiers). |
 | Table list | Latest **20** by `classified_at`, then sort | Newest rows always in the result set. Sort reorders those 20, it does not pick a different slice. |
-| UI stats | Counts over **all** `pr_triages` | Total; not reasoned (`source` not `llm`/`rule`); `source=llm`; `source=rule`. |
+| UI stats | Counts over **all** `pr_triages` | Total; not reasoned (`source` not `model`/`rule`); `source=model`; `source=rule`. |
 | When column | Browser local time | Display like `1:30 pm`; `title` hover is full local datetime with seconds. Tiny inline JS; no library. |
 | JSON API | `GET /api/triages` | Same row set as `GET /`, plus `stats`. |
 | GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 1** opened PR per sweep (`batch_index() >= 1` → drop) before cache. Cache still drops duplicate `id`s. |
 | Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
-| Lockfile names | See list below | Widen later via the same skip-LLM list |
+| Lockfile names | See list below | Widen later via the same Rule list |
 | File budget | Max **20** files; each patch truncated to **4000** chars; filenames + status always kept | Open to retune |
 | Bot filter | **None** in v1 | Dependabot PRs may still flow. Extension-shaped later. |
 | Draft PRs | **Keep** (no filter) | Open to drop drafts in Connect later |
@@ -90,9 +91,11 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
 | Inspect Postgres UI | pgAdmin `http://localhost:8082` | No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
 | Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `ollama serve` with `OLLAMA_HOST=0.0.0.0:11434` (LAN). Check still curls `127.0.0.1:11434`. Logs: `.local/ollama.log`. |
+| `infra:up` | Full Compose stack | Postgres, Redpanda, Console, pgAdmin, Connect, **reason**, **serve**. Creates the work topic. Requires `GITHUB_TOKEN`. Ollama stays on the host (`task ollama:up`). |
+| `infra:down` | Stop that stack, keep volumes | `infra:down:clean` also deletes volumes. |
 | jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
 
-### Lockfile set (skip-LLM)
+### Lockfile set (Rules)
 
 `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `npm-shrinkwrap.json`, `Cargo.lock`, `go.sum`, `poetry.lock`, `Pipfile.lock`, `Gemfile.lock`, `composer.lock`, `bun.lock`, `bun.lockb`
 
@@ -107,9 +110,9 @@ State these if asked in a walkthrough.
 1. “GitHub as the source for PRs” means the public [Events API](https://api.github.com/events), not org webhooks or a single-repo poll.
 2. Event `id` is unique per event. A future `synchronize` on the same PR is a **new** `id` and a **new** row.
 3. `payload.pull_request.body` on the event may exist but is not trusted as complete; the worker always GET-pulls.
-4. Skip-LLM file rules use the **fetched** file list, never the event payload.
+4. Rule file checks use the **fetched** file list, never the event payload.
 5. Title, author, and action may be stored and shown; they are not the classification input for the model.
-6. “Several prompts” means **distinct steps** (extract vs classify), not three ways of asking for the same label.
+6. “Several prompts” means **distinct steps** (Summarize vs Classification), not three ways of asking for the same label.
 7. **`reason`** consumes the work topic and writes Postgres. **`serve`** only reads Postgres and hosts HTTP. Hitting the web page does not classify.
 8. Ollama speaks an OpenAI-compatible HTTP API from the Go service. Connect must not call it. The model process is on the host; Compose does not run `ollama/ollama`.
 9. Public GitHub is a **demo dataset** standing in for an internal “opened PRs in our orgs” feed (customer story still open).
@@ -124,7 +127,7 @@ Do not silently resolve these into architecture-changing behavior.
 ### Must decide before a polished demo (not before Phase 1)
 
 - Exact Ollama model if `qwen2.5:14b` is too weak or too slow on diffs
-- Confidence: number-only vs **control-flow** (second extract, extra fetch, or force `unknown`)
+- Confidence: number-only vs **control-flow** (second Summarize, extra fetch, or force `unknown`)
 - What the UI highlights (`security` first? filter? confidence sort?)
 - Customer paragraph: who uses this, what decision a row drives, cost of wrong/missing
 - Which **two** official tradeoff pairs to write in README (human-only)
@@ -171,6 +174,8 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Split Go: Compose **`reason`** (Kafka + GitHub + Ollama + upsert) vs **`serve`** (HTML + JSON, Postgres read). Former `app` service is `reason`.
 - 2026-08-26 — `task ollama:up` sets `OLLAMA_HOST=0.0.0.0:11434` so LAN clients can reach this Mac. Override: `task ollama:up OLLAMA_HOST=127.0.0.1:11434`.
 - 2026-08-27 — UI CSS matches `.reference/index.html` (inline, no Pico). Sort + extra columns (area, source) stay.
-- 2026-08-27 — Serve lists the latest 20 rows; stats (total / not reasoned / llm / rule) over the whole table; When is browser-local with a full-time hover.
+- 2026-08-27 — Serve lists the latest 20 rows; stats (total / not reasoned / model / rule) over the whole table; When is browser-local with a full-time hover.
+- 2026-08-27 — Reason terminology: Rules then Summarize then Classification; `source=model`; persist `summary`; `created_at` matches the Message.
 - 2026-08-27 — LLM instructions live in `internal/reason/prompts/` and are `//go:embed`’d. Evidence assembly stays in Go.
 - 2026-08-27 — Connect: max **1** opened-PR message per generate sweep (`batch_index() >= 1`).
+- 2026-08-27 — `task infra:up` starts the full Compose stack (including Connect, reason, serve). Ollama remains host-side.

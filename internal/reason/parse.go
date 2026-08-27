@@ -22,9 +22,9 @@ type Classification struct {
 	Rationale  string  `json:"rationale"`
 }
 
-type Extraction struct {
-	AffectedArea  string `json:"affected_area"`
-	ChangeSummary string `json:"change_summary"`
+type Summary struct {
+	AffectedArea string `json:"affected_area"`
+	Summary      string `json:"summary"`
 }
 
 // FirstObject returns the first complete JSON object in s, using brace matching
@@ -99,14 +99,14 @@ func ParseClassification(raw string) (Classification, error) {
 	return c, nil
 }
 
-func ParseExtraction(raw string) (Extraction, error) {
+func ParseSummary(raw string) (Summary, error) {
 	obj, err := FirstObject(raw)
 	if err != nil {
-		return Extraction{}, err
+		return Summary{}, err
 	}
-	var e Extraction
+	var e Summary
 	if err := json.Unmarshal([]byte(obj), &e); err != nil {
-		return Extraction{}, fmt.Errorf("unmarshal extraction: %w", err)
+		return Summary{}, fmt.Errorf("unmarshal summary: %w", err)
 	}
 	return e, nil
 }

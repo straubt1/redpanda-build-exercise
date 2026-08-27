@@ -36,14 +36,23 @@ tasks:
         fi
 
   infra:up:
-    desc: Start Postgres + Redpanda + Console + pgAdmin; create the work topic
+    desc: Start Compose stack (Postgres, Redpanda, Connect, reason, serve, Console, pgAdmin)
     cmds:
+      - |
+        set -euo pipefail
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GITHUB_TOKEN must be set in .env for Connect and reason" >&2
+          exit 1
+        fi
       - "{{.COMPOSE}} up -d --wait postgres redpanda console pgadmin"
       - |
         set -euo pipefail
         {{.COMPOSE}} exec -T redpanda rpk topic create {{.TOPIC}} -X brokers=redpanda:9092 || true
         {{.COMPOSE}} exec -T redpanda rpk topic list -X brokers=redpanda:9092
-        echo "Infra is up — Kafka localhost:19092, Postgres localhost:5432, Console http://localhost:8081, pgAdmin http://localhost:8082, topic {{.TOPIC}}"
+      - "{{.COMPOSE}} up -d --build --wait connect reason serve"
+      - |
+        echo "Stack is up — serve http://localhost:8080, Console http://localhost:8081, pgAdmin http://localhost:8082, Kafka localhost:19092, Postgres localhost:5432, topic {{.TOPIC}}"
+        echo "Ollama is on the host: task ollama:up"
 
   connect:up:
     desc: Start Connect ingest (requires GITHUB_TOKEN)
@@ -99,9 +108,10 @@ tasks:
       - go test {{.CLI_ARGS}} ./...
 
   infra:down:
-    desc: Stop infra (keeps volumes)
+    desc: Stop Compose stack (keeps volumes)
     cmds:
       - "{{.COMPOSE}} stop serve reason connect pgadmin console redpanda postgres"
+      - echo "Stack stopped (volumes kept)"
 
   infra:down:clean:
     desc: Stop infra and delete volumes (wipes Postgres data and topic log)

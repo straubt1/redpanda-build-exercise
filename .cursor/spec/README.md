@@ -17,9 +17,9 @@ Cursor project rules in [`.cursor/rules/`](../rules/) are **short constraints**.
 ### Always-on constraints (also in `.cursor/rules/00-pipeline.mdc`)
 
 - Redpanda Connect does **plumbing only**: ingest, filter, project, cache, produce. **No LLM in Connect.** Not in a Connect `branch` processor.
-- The **reason** service owns enrichment, skip-LLM rules, the reasoning loop, parse/retry, and Postgres writes. **serve** only reads Postgres and hosts HTTP.
+- The **reason** service owns enrichment, Rules, Summarize then Classification, parse/retry, and Postgres writes. **serve** only reads Postgres and hosts HTTP.
 - The model must classify from **fetched PR body and changed files**, not from title/comment/event metadata alone.
-- Skip-LLM rules are allowed for obvious file-only cases (see decisions). Mixed trees go to the model.
+- Rules are allowed for obvious file-only cases (see decisions). Mixed trees go to the Model.
 - One command to run the full system eventually: `docker compose up` (Phase 8). Developer loop is **Taskfile** (`task …`); see [`devloop.md`](devloop.md). Each early phase may run a subset of tasks.
 - Do not write the README Tradeoffs / “Why this matters” with AI. That is a human-only deliverable at the end.
 - Prefer small, defendable Go over cleverness. The walkthrough will trace malformed model output line by line.

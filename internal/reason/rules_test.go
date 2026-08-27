@@ -1,9 +1,9 @@
-package skipllm
+package reason
 
 import "testing"
 
 func TestMatch(t *testing.T) {
-	rules := Default()
+	rules := defaultRules()
 
 	tests := []struct {
 		name     string
@@ -62,7 +62,7 @@ func TestMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := Match(rules, tt.files)
+			got, ok := match(rules, tt.files)
 			if ok != tt.wantSkip {
 				t.Fatalf("skip=%v want %v (category=%q)", ok, tt.wantSkip, got)
 			}

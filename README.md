@@ -6,17 +6,17 @@ Host ports come from `docker-compose.yml` (`task infra:up`).
 
 | Host | Service | Use |
 | --- | --- | --- |
-| `localhost:8080` | `serve` | HTML table + JSON API (`/api/triages`, `/healthz`). `task serve:up` |
+| `localhost:8080` | `serve` | HTML table + JSON API (`/api/triages`, `/healthz`). Started by `task infra:up` |
 | `localhost:5432` | `postgres` | PostgreSQL (`triage` / `triage` / `triage`). `task db:psql` |
 | `localhost:19092` | `redpanda` | Kafka API **from the host** |
 | `localhost:8081` | `console` | [Redpanda Console](http://localhost:8081) — browse topics and messages |
 | `localhost:8082` | `pgadmin` | [pgAdmin](http://localhost:8082) — browse Postgres. Server **triage** is pre-registered (no login). |
 
-`connect` has **no host port**. It polls GitHub and produces to Kafka on the Compose network (`redpanda:9092`). Logs: `task logs SERVICE=connect`.
+`connect` has **no host port**. It polls GitHub and produces to Kafka on the Compose network (`redpanda:9092`). Logs: `task logs SERVICE=connect`. `task infra:up` starts it with the rest of Compose.
 
-`reason` has **no host port**. It consumes `github.pr.opened`, GETs PR body/files, skip-LLM or extract→classify via **host** Ollama (`host.docker.internal:11434`), and upserts Postgres. Logs: `task logs SERVICE=reason`. Start: `task ollama:up` then `task reason:up`. Stop: `task reason:down`.
+`reason` has **no host port**. It consumes `github.pr.opened`, GETs PR body/files, applies Rules or Summarize→Classification via **host** Ollama (`host.docker.internal:11434`), and upserts Postgres. Logs: `task logs SERVICE=reason`. `task infra:up` starts it with the rest of Compose. Stop just the worker: `task reason:down`.
 
-`serve` only reads Postgres and hosts `http://localhost:8080`. It does not consume Kafka or call Ollama. Start: `task serve:up`. Stop: `task serve:down`. Stopping one Go service does not stop the other.
+`serve` only reads Postgres and hosts `http://localhost:8080`. It does not consume Kafka or call Ollama. `task infra:up` starts it with the rest of Compose. Stop just the UI: `task serve:down`.
 
 Inside the Compose network, Kafka is **`redpanda:9092`**. Tasks that `exec` into the Redpanda container (for example `task topic:consume`) use that address, not `19092`.
 
@@ -42,4 +42,6 @@ task sim:replay          # wipe sim Postgres rows + recreate topic, then produce
 task topic:consume       # read github.pr.opened from the start
 ```
 
-`task sim:reset` deletes `pr_triages` rows whose `event_id` starts with `sim-` and **recreates** `github.pr.opened` (all messages, not only sim). `task sim:reset:all` deletes **every** `pr_triages` row and recreates the topic. `task sim:produce` writes the JSON files onto the topic without resetting. Add files under `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed. `repo` / `pr_number` are real public PRs so a later worker GET still works. Skip-LLM fixtures: `sim-004` is markdown-only (`rust-lang/rfcs#1` → `docs`); `sim-005` is lockfile-only (`grommet/grommet-site#568` → `dependency-bump`). Both use `source=rule`. `task test` runs those rules without Docker.
+`task sim:reset` deletes `pr_triages` rows whose `event_id` starts with `sim-` and **recreates** `github.pr.opened` (all messages, not only sim). `task sim:reset:all` deletes **every** `pr_triages` row and recreates the topic. `task sim:produce` writes the JSON files onto the topic without resetting. Add files under `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed. `repo` / `pr_number` are real public PRs so a later worker GET still works. Rule fixtures: `sim-004` is markdown-only (`rust-lang/rfcs#1` → `docs`); `sim-005` is lockfile-only (`grommet/grommet-site#568` → `dependency-bump`). Both use `source=rule`. `task test` runs those rules without Docker.
+
+After a `db/schema.sql` change, wipe the Postgres volume (`docker compose down -v` or equivalent) so the new columns exist. Kafka Message keys are unchanged.

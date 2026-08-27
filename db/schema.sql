@@ -11,9 +11,10 @@ CREATE TABLE IF NOT EXISTS pr_triages (
   confidence      DOUBLE PRECISION,
   rationale       TEXT NOT NULL DEFAULT '',
   affected_area   TEXT NOT NULL DEFAULT '',
+  summary         TEXT NOT NULL DEFAULT '',
   source          TEXT NOT NULL DEFAULT 'unknown',
   error           TEXT NOT NULL DEFAULT '',
-  received_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ,
   classified_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

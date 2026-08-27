@@ -1,5 +1,5 @@
 Classify this GitHub pull request.
-Use the extraction, PR body, and changed files. Do not classify from the title alone.
+Use the summary, PR body, and changed files. Do not classify from the title alone.
 category must be one of: security, feature, refactor, docs, dependency-bump, unknown.
 confidence is a number from 0 to 1.
 Reply with JSON only: {"category":"...","confidence":0.0,"rationale":"..."}

@@ -8,7 +8,7 @@ alwaysApply: true
 Design lives in `.cursor/spec/`. Application code is not canonical. If a choice is new, update `.cursor/spec/decisions.md` first.
 
 - Connect: ingest, filter, project, cache, produce. **No LLM** and no Connect `branch` processor for reasoning.
-- Go owns fetch (PR body + files), skip-LLM rules, extract→classify, parse/retry, Postgres upsert.
+- Go owns fetch (PR body + files), Rules, Summarize then Classification, parse/retry, Postgres upsert.
 - Classify from **fetched content**, not title/event metadata alone (`regex wearing a costume`).
 - Implement **one** `.cursor/spec/build-plan.md` phase at a time. Stop at that phase's verify list.
 - Verify with `task` targets from `.cursor/spec/devloop.md`. Do not copy `.reference/Taskfile.yml`.

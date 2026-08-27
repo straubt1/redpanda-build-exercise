@@ -16,6 +16,7 @@ func main() {
 		applog.Err.Fatalf("config: %v", err)
 	}
 
+	// Cancel on Ctrl+C (SIGINT) and docker stop (SIGTERM) so Poll exits cleanly.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

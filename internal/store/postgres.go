@@ -26,7 +26,8 @@ type Row struct {
 	Error        string     `json:"error"`
 	Confidence   *float64   `json:"confidence"`
 	AffectedArea string     `json:"affected_area"`
-	ReceivedAt   *time.Time `json:"received_at"`
+	Summary      string     `json:"summary"`
+	CreatedAt    *time.Time `json:"created_at"`
 	ClassifiedAt time.Time  `json:"classified_at"`
 }
 
@@ -71,7 +72,7 @@ const (
 type Stats struct {
 	Total   int64 `json:"total"`
 	Pending int64 `json:"pending"`
-	LLM     int64 `json:"llm"`
+	Model   int64 `json:"model"`
 	Rule    int64 `json:"rule"`
 }
 
@@ -100,10 +101,10 @@ func (s *Store) List(ctx context.Context, sortCol, dir string) ([]Row, error) {
 	}
 	q := fmt.Sprintf(`
 SELECT event_id, repo, pr_number, title, pr_url, author, action,
-  category, source, rationale, error, confidence, affected_area, received_at, classified_at
+  category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
 FROM (
   SELECT event_id, repo, pr_number, title, pr_url, author, action,
-    category, source, rationale, error, confidence, affected_area, received_at, classified_at
+    category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
   FROM pr_triages
   ORDER BY classified_at DESC
   LIMIT %d
@@ -121,8 +122,8 @@ ORDER BY %s %s NULLS LAST
 		var r Row
 		if err := rows.Scan(
 			&r.EventID, &r.Repo, &r.PRNumber, &r.Title, &r.PRURL, &r.Author, &r.Action,
-			&r.Category, &r.Source, &r.Rationale, &r.Error, &r.Confidence, &r.AffectedArea,
-			&r.ReceivedAt, &r.ClassifiedAt,
+			&r.Category, &r.Source, &r.Rationale, &r.Error, &r.Confidence, &r.AffectedArea, &r.Summary,
+			&r.CreatedAt, &r.ClassifiedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -136,11 +137,11 @@ func (s *Store) Counts(ctx context.Context) (Stats, error) {
 	err := s.pool.QueryRow(ctx, `
 SELECT
   COUNT(*)::bigint,
-  COUNT(*) FILTER (WHERE source NOT IN ('llm', 'rule'))::bigint,
-  COUNT(*) FILTER (WHERE source = 'llm')::bigint,
+  COUNT(*) FILTER (WHERE source NOT IN ('model', 'rule'))::bigint,
+  COUNT(*) FILTER (WHERE source = 'model')::bigint,
   COUNT(*) FILTER (WHERE source = 'rule')::bigint
 FROM pr_triages
-`).Scan(&st.Total, &st.Pending, &st.LLM, &st.Rule)
+`).Scan(&st.Total, &st.Pending, &st.Model, &st.Rule)
 	return st, err
 }
 
@@ -148,8 +149,8 @@ func (s *Store) Upsert(ctx context.Context, row Row) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO pr_triages (
   event_id, repo, pr_number, title, pr_url, author, action,
-  category, source, rationale, error, confidence, affected_area, received_at, classified_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+  category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
 ON CONFLICT (event_id) DO UPDATE SET
   repo = EXCLUDED.repo,
   pr_number = EXCLUDED.pr_number,
@@ -163,9 +164,10 @@ ON CONFLICT (event_id) DO UPDATE SET
   error = EXCLUDED.error,
   confidence = EXCLUDED.confidence,
   affected_area = EXCLUDED.affected_area,
-  received_at = EXCLUDED.received_at,
+  summary = EXCLUDED.summary,
+  created_at = EXCLUDED.created_at,
   classified_at = now()
 `, row.EventID, row.Repo, row.PRNumber, row.Title, row.PRURL, row.Author, row.Action,
-		row.Category, row.Source, row.Rationale, row.Error, row.Confidence, row.AffectedArea, row.ReceivedAt)
+		row.Category, row.Source, row.Rationale, row.Error, row.Confidence, row.AffectedArea, row.Summary, row.CreatedAt)
 	return err
 }
