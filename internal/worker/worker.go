@@ -56,9 +56,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 		for _, rec := range records {
+			// Handle the message and upsert the DB
 			if err := handle(ctx, db, gh, ollama, rec.Value); err != nil {
 				return fmt.Errorf("upsert offset=%d: %w", rec.Offset, err)
 			}
+			// After a successful upsert: tell the consumer group this offset is done.
+			// Auto-commit is off, so a crash before this line redelivers the same message.
 			if err := c.Commit(ctx, rec); err != nil {
 				return fmt.Errorf("commit offset=%d: %w", rec.Offset, err)
 			}
@@ -67,6 +70,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 }
 
 func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte) error {
+	// Parse the message from Kafka and Validate the data
 	var msg Work
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		applog.Err.Printf("skip bad json: %v", err)
@@ -92,7 +96,9 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollam
 		row.ReceivedAt = &t
 	}
 
+	// Enrich the data with GH API by fetching the PR data not in the kafka message
 	enr, err := gh.Fetch(ctx, msg.Repo, msg.PRNumber)
+	// If the fetch fails, log the error and mark the row as failed - uncommon
 	if err != nil {
 		status := githubclient.StatusOf(err)
 		applog.Err.Printf("github fetch event_id=%s repo=%s pr=%d status=%d: %v", msg.EventID, msg.Repo, msg.PRNumber, status, err)
@@ -104,6 +110,7 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollam
 		return nil
 	}
 
+	// Set the data - no classification has occurred yet
 	row.Title = enr.Title
 	if enr.HTMLURL != "" {
 		row.PRURL = enr.HTMLURL
@@ -112,8 +119,11 @@ func handle(ctx context.Context, db *store.Store, gh *githubclient.Client, ollam
 		row.Author = enr.Author
 	}
 	row.Error = ""
+
+	// Apply the classification - this the top level classification of the PR after all needed data is fetched
 	applyClassification(ctx, ollama, &row, enr)
 
+	// Upsert the data to the DB the result
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
 	}

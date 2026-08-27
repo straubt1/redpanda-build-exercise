@@ -1,0 +1,3 @@
+Extract what this GitHub pull request changed.
+Use the PR body and changed files (including patches). Do not infer from the title alone.
+Reply with JSON only: {"affected_area":"...","change_summary":"..."}

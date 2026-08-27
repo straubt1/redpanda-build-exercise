@@ -68,7 +68,7 @@ pipeline:
         }
     # Cap survivors per generate sweep (batch_index is 0-based; only applies while still one batch).
     - mapping: |
-        root = if batch_index() >= 4 { deleted() } else { this }
+        root = if batch_index() >= 1 { deleted() } else { this }
     - cache:
         resource: seen_events
         operator: add

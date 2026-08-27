@@ -24,9 +24,9 @@ func New(db *store.Store) *Server {
 	return &Server{
 		db: db,
 		page: template.Must(template.New("page").Funcs(template.FuncMap{
-			"fmtTime": fmtTime,
-			"fmtConf": fmtConf,
-			"nextDir": nextDir,
+			"fmtRFC3339": fmtRFC3339,
+			"fmtConf":    fmtConf,
+			"nextDir":    nextDir,
 		}).Parse(pageHTML)),
 	}
 }
@@ -49,20 +49,20 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	rows, sort, dir, err := s.load(r.Context(), r, false)
+	data, err := s.load(r.Context(), r, false)
 	if err != nil {
 		applog.Err.Printf("serve list: %v", err)
 		http.Error(w, "list failed", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.page.Execute(w, pageData{Rows: rows, Sort: sort, Dir: dir}); err != nil {
+	if err := s.page.Execute(w, data); err != nil {
 		applog.Err.Printf("serve template: %v", err)
 	}
 }
 
 func (s *Server) apiTriages(w http.ResponseWriter, r *http.Request) {
-	rows, sort, dir, err := s.load(r.Context(), r, true)
+	data, err := s.load(r.Context(), r, true)
 	if err != nil {
 		if errors.Is(err, errBadSort) {
 			w.Header().Set("Content-Type", "application/json")
@@ -75,53 +75,65 @@ func (s *Server) apiTriages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(apiResponse{Rows: rows, Sort: sort, Dir: dir})
+	_ = json.NewEncoder(w).Encode(apiResponse{
+		Rows:  data.Rows,
+		Sort:  data.Sort,
+		Dir:   data.Dir,
+		Stats: data.Stats,
+	})
 }
 
-func (s *Server) load(ctx context.Context, r *http.Request, strict bool) ([]store.Row, string, string, error) {
+func (s *Server) load(ctx context.Context, r *http.Request, strict bool) (pageData, error) {
 	qSort := r.URL.Query().Get("sort")
 	qDir := r.URL.Query().Get("dir")
 	col, dir, ok := store.NormalizeOrder(qSort, qDir)
 	if !ok && strict && qSort != "" {
-		return nil, "", "", errBadSort
+		return pageData{}, errBadSort
 	}
 	if !ok {
 		col, dir = store.DefaultSort, store.DefaultDir
 	}
 	rows, err := s.db.List(ctx, col, dir)
 	if err != nil {
-		return nil, "", "", err
+		return pageData{}, err
 	}
 	if rows == nil {
 		rows = []store.Row{}
 	}
-	return rows, col, dir, nil
+	stats, err := s.db.Counts(ctx)
+	if err != nil {
+		return pageData{}, err
+	}
+	return pageData{Rows: rows, Sort: col, Dir: dir, Stats: stats, Cap: store.ListCap}, nil
 }
 
 type pageData struct {
-	Rows []store.Row
-	Sort string
-	Dir  string
+	Rows  []store.Row
+	Sort  string
+	Dir   string
+	Stats store.Stats
+	Cap   int
 }
 
 type apiResponse struct {
-	Rows []store.Row `json:"rows"`
-	Sort string      `json:"sort"`
-	Dir  string      `json:"dir"`
+	Rows  []store.Row `json:"rows"`
+	Sort  string      `json:"sort"`
+	Dir   string      `json:"dir"`
+	Stats store.Stats `json:"stats"`
 }
 
-func fmtTime(t time.Time) string {
+func fmtRFC3339(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format("2006-01-02 15:04")
+	return t.UTC().Format(time.RFC3339)
 }
 
 func fmtConf(c *float64) string {
 	if c == nil {
 		return ""
 	}
-	return strconv.FormatFloat(*c, 'f', -1, 64)
+	return strconv.FormatFloat(*c, 'f', 2, 64)
 }
 
 func nextDir(currentSort, currentDir, col string) string {

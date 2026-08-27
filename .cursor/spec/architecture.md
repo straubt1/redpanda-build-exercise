@@ -37,7 +37,7 @@ GET https://api.github.com/events
         ▼
 ┌──────────────────────────────────────┐
 │ GO SERVE (compose: serve)            │
-│  GET /  HTML table (Pico)            │
+│  GET /  HTML table (reference CSS)   │
 │  GET /api/triages  JSON              │
 │  GET /healthz                        │
 └──────────────────────────────────────┘
@@ -71,7 +71,7 @@ GET https://api.github.com/events
           author, action, created_at
         │
         ▼
- cap 4 per sweep (batch_index)
+ cap 1 per sweep (batch_index)
         │
         ▼
  cache key = event_id  (seen → drop)
@@ -182,6 +182,8 @@ When skip-LLM fires: still persist repo, pr, title, url, file list summary if th
 
 ### Model I/O
 
+Instruction prefixes are files under `internal/reason/prompts/` (`extract.txt`, `classify.txt`, `classify_repair.txt` on classify retry). `reason` embeds them at compile time. Go appends changed files, truncated body, then title (last). See `internal/reason/prompts/README.md`.
+
 **Extract** must produce structured JSON, e.g. `{ "affected_area": string, "change_summary": string }`. Exact keys may vary; parse must be tolerant.
 
 **Classify** must produce `{ "category": string, "confidence": number, "rationale": string }`.
@@ -246,12 +248,18 @@ Compose service **`serve`**. Separate binary (`cmd/serve`). Reads Postgres only 
 v1, `localhost:8080`:
 
 - `GET /` — HTML table of `pr_triages`. Default newest first (`classified_at` desc).
-- `GET /api/triages` — JSON of the **same** rows (same filters/sort). `Content-Type: application/json`.
+- `GET /api/triages` — JSON of the **same** rows (same filters/sort) plus `stats`. `Content-Type: application/json`.
 - `GET /healthz` — 200 if Postgres ping succeeds.
 
-Show: repo, pr number (link `pr_url`), title, category, confidence, affected area, rationale, source, time.
+Show: when, repo, PR number (link `pr_url`) with title under it, category, confidence, source, affected area, rationale.
 
-**CSS:** [Pico CSS table](https://picocss.com/docs/table) via CDN (`@picocss/pico@2`). Classful stylesheet so `table.striped` works. No SPA, no JS framework.
+**List cap:** inner query takes the **20** newest by `classified_at`; outer query applies `sort`/`dir`. Newest rows are always in the set.
+
+**Stats** (all rows, not just the 20): total; not reasoned (`source` not `llm` or `rule`); count `source=llm`; count `source=rule`. Shown above the table.
+
+**When:** ISO timestamp in `<time datetime>`; a few lines of inline JS format the browser-local clock (`1:30 pm`) and set `title` to the full local datetime with seconds. No JS framework.
+
+**CSS:** Inline styles matching `.reference/index.html` (system UI font, `#f7f8f5` page, white table, `#0b5` links). No Pico, no SPA, no JS framework.
 
 **Sort:** query params `sort` and `dir` (`asc`|`desc`). Column headers on `GET /` are links that toggle dir. Allowlist `sort` to real columns (e.g. `classified_at`, `category`, `repo`, `title`, `confidence`, `source`). Reject unknown `sort` with 400 on the API; HTML falls back to default. HTML and JSON share one list/query function.
 

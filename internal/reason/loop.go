@@ -57,11 +57,13 @@ func fallback(err error, extractRetries, classifyRetries int, area string) Outco
 }
 
 func ClassifyPR(ctx context.Context, llm Completer, in Input, eventID string) Outcome {
+	// Call LLM to extract the affected area - updates Outcome.AffectedArea
 	ex, extractRetries, err := stepExtract(ctx, llm, in, eventID)
 	if err != nil {
 		return fallback(err, extractRetries, 0, "")
 	}
 
+	// Call LLM to classify the PR - updates Outcome.Category, Outcome.Confidence, Outcome.Rationale
 	cl, classifyRetries, err := stepClassify(ctx, llm, in, ex, eventID)
 	if err != nil {
 		return fallback(err, extractRetries, classifyRetries, ex.AffectedArea)
@@ -125,16 +127,16 @@ func stepClassify(ctx context.Context, llm Completer, in Input, ex Extraction, e
 
 func repairSuffix(err error) string {
 	return fmt.Sprintf(
-		"Your previous output was invalid (%v). category must be one of: security, feature, refactor, docs, dependency-bump, unknown. Reply with JSON only: {\"category\":\"...\",\"confidence\":0.0,\"rationale\":\"...\"}",
+		"Your previous output was invalid (%v). %s",
 		err,
+		strings.TrimSpace(classifyRepairInstructions),
 	)
 }
 
 func extractPrompt(in Input) string {
 	var b strings.Builder
-	b.WriteString("Extract what this GitHub pull request changed.\n")
-	b.WriteString("Use the PR body and changed files (including patches). Do not infer from the title alone.\n")
-	b.WriteString("Reply with JSON only: {\"affected_area\":\"...\",\"change_summary\":\"...\"}\n\n")
+	b.WriteString(strings.TrimRight(extractInstructions, "\n"))
+	b.WriteString("\n\n")
 	writeBodyFiles(&b, in)
 	writeTitle(&b, in.Title)
 	return b.String()
@@ -142,11 +144,8 @@ func extractPrompt(in Input) string {
 
 func classifyPrompt(in Input, ex Extraction) string {
 	var b strings.Builder
-	b.WriteString("Classify this GitHub pull request.\n")
-	b.WriteString("Use the extraction, PR body, and changed files. Do not classify from the title alone.\n")
-	b.WriteString("category must be one of: security, feature, refactor, docs, dependency-bump, unknown.\n")
-	b.WriteString("confidence is a number from 0 to 1.\n")
-	b.WriteString("Reply with JSON only: {\"category\":\"...\",\"confidence\":0.0,\"rationale\":\"...\"}\n\n")
+	b.WriteString(strings.TrimRight(classifyInstructions, "\n"))
+	b.WriteString("\n\n")
 	b.WriteString("Extraction:\n")
 	b.WriteString(fmt.Sprintf("affected_area: %s\nchange_summary: %s\n\n", ex.AffectedArea, ex.ChangeSummary))
 	writeBodyFiles(&b, in)

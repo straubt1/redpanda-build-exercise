@@ -65,7 +65,15 @@ var sortColumns = map[string]string{
 const (
 	DefaultSort = "classified_at"
 	DefaultDir  = "desc"
+	ListCap     = 20
 )
+
+type Stats struct {
+	Total   int64 `json:"total"`
+	Pending int64 `json:"pending"`
+	LLM     int64 `json:"llm"`
+	Rule    int64 `json:"rule"`
+}
 
 // NormalizeOrder allowlists sort identifiers. ok is false if sort is set but unknown.
 func NormalizeOrder(sort, dir string) (col, direction string, ok bool) {
@@ -93,10 +101,15 @@ func (s *Store) List(ctx context.Context, sortCol, dir string) ([]Row, error) {
 	q := fmt.Sprintf(`
 SELECT event_id, repo, pr_number, title, pr_url, author, action,
   category, source, rationale, error, confidence, affected_area, received_at, classified_at
-FROM pr_triages
+FROM (
+  SELECT event_id, repo, pr_number, title, pr_url, author, action,
+    category, source, rationale, error, confidence, affected_area, received_at, classified_at
+  FROM pr_triages
+  ORDER BY classified_at DESC
+  LIMIT %d
+) recent
 ORDER BY %s %s NULLS LAST
-LIMIT 200
-`, col, direction)
+`, ListCap, col, direction)
 	rows, err := s.pool.Query(ctx, q)
 	if err != nil {
 		return nil, err
@@ -116,6 +129,19 @@ LIMIT 200
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) Counts(ctx context.Context) (Stats, error) {
+	var st Stats
+	err := s.pool.QueryRow(ctx, `
+SELECT
+  COUNT(*)::bigint,
+  COUNT(*) FILTER (WHERE source NOT IN ('llm', 'rule'))::bigint,
+  COUNT(*) FILTER (WHERE source = 'llm')::bigint,
+  COUNT(*) FILTER (WHERE source = 'rule')::bigint
+FROM pr_triages
+`).Scan(&st.Total, &st.Pending, &st.LLM, &st.Rule)
+	return st, err
 }
 
 func (s *Store) Upsert(ctx context.Context, row Row) error {

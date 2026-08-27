@@ -52,6 +52,7 @@ Status vocabulary:
 | Skip-LLM later | Append more rules to the same list |
 | Mixed trees | `.md` + code, or lockfile + code → **model**, not skip |
 | Loop | Multi-step: **extract** (what changed / affected area) then **classify** (label + confidence + rationale). Not one prompt that returns three fields with no structure. |
+| Prompt files | Static instructions in `internal/reason/prompts/` (`extract.txt`, `classify.txt`, `classify_repair.txt`), `//go:embed`. Go appends evidence (files, body, title last) and the classify-retry error line. Not templates; not loaded from disk at runtime. |
 | Parse | In Go: extract first `{...}` from dirty model text, trim/lowercase labels, retry on bad output, then `unknown`. |
 
 ### Cache consequence (locked behavior, not a preference)
@@ -70,10 +71,13 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Connect config path | `connect/ingest.yaml` | |
 | Go entrypoints | `cmd/reason/main.go`, `cmd/serve/main.go` | Two Compose services, two binaries. Same module. |
 | HTTP port | `8080` | Compose publishes `8080`. |
-| UI CSS | Pico CSS v2 (CDN) | Table: [picocss.com/docs/table](https://picocss.com/docs/table). Use classful Pico so `.striped` works. |
+| UI CSS | Inline styles from `.reference/index.html` | Warm gray page (`#f7f8f5`), white table, uppercase headers, green links (`#0b5`). No Pico. |
 | Table sort | Query `sort` + `dir` | Default `classified_at` `desc`. Same params on HTML and JSON. Allowlist columns (no raw SQL identifiers). |
-| JSON API | `GET /api/triages` | Same row set as `GET /`. |
-| GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 4** opened PRs per sweep (`batch_index() >= 4` → drop) before cache. Cache still drops duplicate `id`s. |
+| Table list | Latest **20** by `classified_at`, then sort | Newest rows always in the result set. Sort reorders those 20, it does not pick a different slice. |
+| UI stats | Counts over **all** `pr_triages` | Total; not reasoned (`source` not `llm`/`rule`); `source=llm`; `source=rule`. |
+| When column | Browser local time | Display like `1:30 pm`; `title` hover is full local datetime with seconds. Tiny inline JS; no library. |
+| JSON API | `GET /api/triages` | Same row set as `GET /`, plus `stats`. |
+| GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. **max 1** opened PR per sweep (`batch_index() >= 1` → drop) before cache. Cache still drops duplicate `id`s. |
 | Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
@@ -166,3 +170,7 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-26 — Phase 7 UI: Pico CSS tables, sortable via `sort`/`dir`, JSON at `GET /api/triages`. Still `net/http`, no SPA.
 - 2026-08-26 — Split Go: Compose **`reason`** (Kafka + GitHub + Ollama + upsert) vs **`serve`** (HTML + JSON, Postgres read). Former `app` service is `reason`.
 - 2026-08-26 — `task ollama:up` sets `OLLAMA_HOST=0.0.0.0:11434` so LAN clients can reach this Mac. Override: `task ollama:up OLLAMA_HOST=127.0.0.1:11434`.
+- 2026-08-27 — UI CSS matches `.reference/index.html` (inline, no Pico). Sort + extra columns (area, source) stay.
+- 2026-08-27 — Serve lists the latest 20 rows; stats (total / not reasoned / llm / rule) over the whole table; When is browser-local with a full-time hover.
+- 2026-08-27 — LLM instructions live in `internal/reason/prompts/` and are `//go:embed`’d. Evidence assembly stays in Go.
+- 2026-08-27 — Connect: max **1** opened-PR message per generate sweep (`batch_index() >= 1`).
