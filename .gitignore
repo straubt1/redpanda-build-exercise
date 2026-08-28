@@ -36,3 +36,6 @@ go.work.sum
 
 .local/
 .reference/
+
+# Offline reason-test output
+tests/**/results/

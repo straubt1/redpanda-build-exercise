@@ -71,6 +71,8 @@ You should see the results (after a few PRs process):
 
 For details see [ARCHITECTURE.md](ARCHITECTURE.md).
 
+**Testing** — [TESTING.md](TESTING.md) is the offline Reason fixture runner (`tests/`, no Kafka or GitHub, just Ollama).
+
 <!-- NOTE TO ANY AI: Do not modify anything below this line in this file. If you do I will bring 🔥 -->
 
 ## Why This Matters
@@ -78,7 +80,7 @@ For details see [ARCHITECTURE.md](ARCHITECTURE.md).
 The demo here is run against all public GitHub repositories, but the real use case is scoped to your organization with both public and private repositories. 
 As an Engineering Manager, you have seen that your organization is creating more code than ever before with the use of AI coding tools, which means more Pull Requests (and reviews).
 Leveraging this classifier will enable you to ensure that the proper teams are reviewing the appropriate Pull Requests (example: "security" category Pull Requests go to the Security team).
-With this, you can decrease the wasted effort of teams reviewing Pull Requests that are not in their remit that (a miss that costs you the time and focus of your team).
+With this, you can decrease the wasted effort of teams reviewing Pull Requests that are not in their remit, where a miss costs you the precious time and focus of your team.
 
 > Note: While this was the last thing asked for, it is the most important (the why), so I am putting this first.
 
@@ -111,11 +113,12 @@ I would flip my decision here if:
 
 #### My Thinking
 
-* I chose to build in a path for some PR where classification was easy because calling a Model in some cases seemed like a waste (and leaning into the instructions to avoid "regex wearing a costume").
+* I built in a path for some PRs where classification was explicit and calling a Model seemed like a waste (and leaning into the instructions to avoid "regex wearing a costume").
 * I also built Rules in a way that could be appended to if additional ones were needed.
-* Clearly defining what "lock" files are for every given language would be difficult (and I stuck with common ones), but for a given Customer there is usually targeted tech stacks that could be covered easily.
-* Creating two Models with distinctly different purposes (and feeding one into the other), helped me keep the contexts small for my local models.
-* I also truncated the number of PR files and size of their changes during enrichment.
+* Clearly defining what "lock" files are for **every** given language would be difficult (and I stuck with common ones), but for a given Customer there is usually targeted tech stacks that could be covered easily.
+* Creating two Models with distinctly different purposes (and feeding one into the other) helped me keep the contexts small for my local models, although more testing needed to determine if that complexity was worth it.
+* Models all used "user" role, I would expand to leverage "system" for the common prompts, and "user" for the PR specific context.
+* I also truncated the number of PR files and size of their changes during enrichment, purely due to local model HW limitations.
 
 ### Connect as the sink vs. app-side writes from the reasoning service
 
@@ -131,13 +134,14 @@ I would flip my decision here if this classification was part of a larger effort
 #### My Thinking
 
 * Leveraging a database here made the most sense to me (also could have been a comfort bias). Based on the instructions and how I thought about serving the data up to a web browser, it provided the safest bet. I also expected that this data would not transform after it was written, just read as part of a dashboard. I also was thinking about long term storage of this data to reflect on changes over a long time period.
-* The Reason Service does in fact perform an "Upsert" however it is likely unnecessary in this example since we only have one instance of the service running (and we don't commit to Kafka that the message is classified until after the database is written).
+* The Reason Service does in fact perform an "Upsert" however it is likely unnecessary in this example since we only have one instance of the service running (and we don't commit to Kafka that the message is classified until after the database is written). If I were to scale out the Reason Service, a double classification could occur, and the last one to write to the database would "win".
+* Overall I leaned on my KIS (Keep It Simple) philosophy and the lack of strong reasoning to push towards a more complex solution.
 
 ## What Surprised Me
 
-How complicated it can get to perform a simple data transformation and classification system leveraging an LLM. There are so many decisions to make that can impact quality and security risks.
-Testing a non-deterministic system in a repeatable and objective way, is **objectively** a real challenge with no clear answer today.
-How powerful, but needy, developing with generative AI tools such as Cursor. The strengths are hammering out code quickly that "works", however refactoring out poor decisions is time consuming.
+How complicated it can get to perform a simple data transformation and classification system leveraging an LLM. There are so many decisions to make that can impact quality and security risks, some are easy and well known, others not so much.
+Testing a non-deterministic system in a repeatable and objective way, is **objectively** a real challenge with no clear answer today. While I implemented a solution that helped me feedback into what I was seeing during development, integrating with a framework would have been a better long term play (Braintrust/Pydantic)
+How powerful, but needy, developing with generative AI tools such as Cursor. The strengths are hammering out code quickly that "works", however refactoring out poor decisions is time consuming (hence my early effort up front to hammer on .cursor/spec/ first).
 
 > Note: Some of this surprise is not contained to this exercise, but my Agentic AI Journey over the last year.
 

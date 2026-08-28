@@ -143,18 +143,15 @@ Add a target when that phase first needs it. Scripts may be longer than one line
 | `ollama:down` | If `pgrep ollama`, `/bin/kill` those pids |
 | `ollama:check` | GET `/api/version` + `/api/tags`. Warn if `OLLAMA_MODEL` (`llama3:8b`) is missing |
 
-### Sim (local fixtures, not GitHub)
+### Offline reason-test (no Kafka / GitHub / Postgres)
 
-Work-topic JSON in `sim/pr-opened/*.json` (`event_id` prefix `sim-`). Produced with `rpk`; **Connect and ingest.yaml are unchanged**. `repo` + `pr_number` are real public PRs so a later worker GET still works.
+Fixture dirs in `tests/<name>/` with `message.json` (work-topic) + `enrichment.json` (post-fetch).
 
 | Task | Does |
 | --- | --- |
-| `sim:produce` | Write fixture files onto `github.pr.opened` |
-| `sim:reset` | `DELETE` Postgres `event_id LIKE 'sim-%'`; **recreate** the work topic (wipes **all** topic messages); restart Connect if it was running |
-| `sim:reset:all` | `DELETE FROM pr_triages` (every row); **recreate** the work topic; restart Connect if it was running |
-| `sim:replay` | `sim:reset` then `sim:produce` |
+| `reason:test` | `go run ./cmd/reason-test {{.DIR}}`. `DIR` required (e.g. `tests/docs-only`). Writes `results/outcome.json`. No Compose. |
 
-Add more files in `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed.
+Rule fixtures (`docs-only`, `lockfile-only`) do not need Ollama. Mixed-tree fixtures call the host model (`task ollama:up`). `tests/**/results/` is gitignored.
 
 ### Phase 7
 

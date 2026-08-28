@@ -5,7 +5,6 @@ dotenv: [".env"]
 vars:
   TOPIC: github.pr.opened
   USER_AGENT: redpanda-build-exercise
-  SIM_DIR: sim/pr-opened
   OLLAMA_MODEL: llama3:8b
   OLLAMA_HOST: 0.0.0.0:11434
   OLLAMA_URL: http://127.0.0.1:11434
@@ -97,6 +96,17 @@ tasks:
     cmds:
       - "docker compose stop reason"
       - echo "reason stopped"
+
+  reason:test:
+    desc: Offline classify from DIR (message.json + enrichment.json); no Kafka/Postgres/GitHub
+    cmds:
+      - |
+        set -euo pipefail
+        if [ -z "{{.DIR}}" ]; then
+          echo "usage: task reason:test DIR=tests/docs-only" >&2
+          exit 1
+        fi
+        OLLAMA_URL="{{.OLLAMA_URL}}" go run ./cmd/reason-test "{{.DIR}}"
 
   serve:up:
     desc: Start serve (HTML + JSON API on :8080)
@@ -279,69 +289,3 @@ tasks:
     desc: Tail compose logs (SERVICE=redpanda optional)
     cmds:
       - "docker compose logs -f {{.SERVICE}}"
-
-  sim:reset:
-    desc: Drop sim rows in Postgres and recreate the work topic (all messages)
-    cmds:
-      - |
-        set -euo pipefail
-        BROKERS="-X brokers=redpanda:9092"
-        docker compose exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages WHERE event_id LIKE 'sim-%';"
-        connect_was_up=0
-        if [ -n "$(docker compose ps -q --status running connect 2>/dev/null || true)" ]; then
-          connect_was_up=1
-          docker compose stop connect
-        fi
-        docker compose exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
-        docker compose exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
-        if [ "$connect_was_up" = 1 ]; then
-          docker compose start connect
-        fi
-        echo "Reset: Postgres sim-% rows deleted, topic {{.TOPIC}} recreated"
-
-  sim:reset:all:
-    desc: Delete all pr_triages rows and recreate the work topic (all messages)
-    cmds:
-      - |
-        set -euo pipefail
-        BROKERS="-X brokers=redpanda:9092"
-        docker compose exec -T postgres psql -U triage -d triage -c "DELETE FROM pr_triages;"
-        connect_was_up=0
-        if [ -n "$(docker compose ps -q --status running connect 2>/dev/null || true)" ]; then
-          connect_was_up=1
-          docker compose stop connect
-        fi
-        docker compose exec -T redpanda rpk topic delete {{.TOPIC}} $BROKERS || true
-        docker compose exec -T redpanda rpk topic create {{.TOPIC}} $BROKERS
-        if [ "$connect_was_up" = 1 ]; then
-          docker compose start connect
-        fi
-        echo "Reset all: Postgres pr_triages emptied, topic {{.TOPIC}} recreated"
-
-  sim:produce:
-    desc: Produce {{.SIM_DIR}}/*.json onto the work topic (no GitHub API)
-    cmds:
-      - |
-        set -euo pipefail
-        if ! command -v jq >/dev/null 2>&1; then
-          echo "install jq (e.g. brew install jq)" >&2
-          exit 1
-        fi
-        shopt -s nullglob
-        files=({{.SIM_DIR}}/*.json)
-        if [ ${#files[@]} -eq 0 ]; then
-          echo "no fixtures in {{.SIM_DIR}}" >&2
-          exit 1
-        fi
-        for f in "${files[@]}"; do
-          echo "produce $f"
-          compact=$(jq -c . "$f")
-          docker compose exec -T -e MSG="$compact" redpanda sh -c 'printf "%s\n" "$MSG" | rpk topic produce {{.TOPIC}} -X brokers=redpanda:9092'
-        done
-        echo "Produced ${#files[@]} message(s) to {{.TOPIC}} — Console http://localhost:8081"
-
-  sim:replay:
-    desc: sim:reset then sim:produce
-    cmds:
-      - task: sim:reset
-      - task: sim:produce

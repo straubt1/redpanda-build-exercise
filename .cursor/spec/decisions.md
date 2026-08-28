@@ -70,7 +70,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Postgres db/user/db name | `triage` / `triage` / `triage` | |
 | Table | `pr_triages` | PK `event_id` |
 | Connect config path | `connect/ingest.yaml` | |
-| Go entrypoints | `cmd/reason/main.go`, `cmd/serve/main.go` | Two Compose services, two binaries. Same module. |
+| Go entrypoints | `cmd/reason/main.go`, `cmd/serve/main.go`, `cmd/reason-test/main.go` | Two Compose services plus a host-only fixture runner. Same module. |
 | HTTP port | `8080` | Compose publishes `8080`. |
 | UI CSS | Inline styles from `.reference/index.html` | Warm gray page (`#f7f8f5`), white table, uppercase headers, green links (`#0b5`). No Pico. |
 | Table sort | Query `sort` + `dir` | Default `classified_at` `desc`. Same params on HTML and JSON. Allowlist columns including `public` (no raw SQL identifiers). |
@@ -96,6 +96,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | `infra:down` | Stop that stack, keep volumes | `infra:down:clean` also deletes volumes. |
 | jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
 | Reason debug dumps | `/logs/{event_id}/` | Always on. Kafka message, enrichment, created prompts + Ollama responses, Postgres row. Fail-open (stderr). Compose bind-mounts `.local/reason-logs:/logs`. |
+| Offline reason-test | `cmd/reason-test`, fixture dir `tests/<name>/` | Host CLI. No Kafka, Postgres, or GitHub. Inputs: `message.json` (work-topic shape) + `enrichment.json` (post-fetch payload). Same Rules then Models as `reason` via `worker.Process`. Writes `results/outcome.json` (persist-shaped row). Model prompts land under `results/{event_id}/prompts/` (`debugdump.SetRoot`). `tests/**/results/` gitignored. Task: `reason:test DIR=tests/<name>`. Ollama still used on the Model path (`OLLAMA_URL` default `http://127.0.0.1:11434`). |
 
 ### Lockfile set (Rules)
 
@@ -196,3 +197,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-28 — HTML table omits `affected_area` and `summary`; both remain on `GET /api/triages`.
 - 2026-08-28 — Serve list cap is `SERVE_LIST_CAP` (default 20). Override in `.env`; Compose passes it into the serve service.
 - 2026-08-28 — Compose `ollama` pulls `OLLAMA_MODEL` on start. No `ollama-pull` sidecar.
+- 2026-08-28 — Offline `reason-test`: `tests/<name>/message.json` + `enrichment.json`; host CLI; no Kafka/Postgres/GitHub; `results/` gitignored.
+- 2026-08-28 — Removed `sim/` Kafka produce fixtures and `sim:*` tasks. Offline `tests/` + `reason:test` is the fixture path.

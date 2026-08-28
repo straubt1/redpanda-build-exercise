@@ -60,7 +60,6 @@ func Run(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 		for _, rec := range records {
-			// Handle the message and upsert the DB - the main logic of the worker
 			if err := handleMessage(ctx, db, gh, ollama, rec.Value, cfg.ConfidenceThreshold); err != nil {
 				return fmt.Errorf("upsert offset=%d: %w", rec.Offset, err)
 			}
@@ -74,14 +73,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 }
 
 func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte, minConfidence float64) error {
-	// Parse the message from Kafka and Validate the data
-	msg, ok := parseMessage(raw)
+	msg, ok := ParseMessage(raw)
 	if !ok {
 		return nil
 	}
 	debugdump.WriteJSONBytes(msg.EventID, "kafka.json", raw)
 
-	// Enrich the data with GH API by fetching the PR data not in the kafka message
 	enr, err := enrich(ctx, gh, msg)
 	if err != nil {
 		debugdump.WriteJSON(msg.EventID, "enrichment.json", map[string]string{"error": err.Error()})
@@ -89,13 +86,11 @@ func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client
 	}
 	debugdump.WriteJSON(msg.EventID, "enrichment.json", enr)
 
-	// Apply the classification - this the top level classification of the PR after all needed data is fetched
-	out := reason.Classify(ctx, ollama, inputFrom(enr), msg.EventID, minConfidence)
-	return persist(ctx, db, msg, enr, out)
+	row, out := Process(ctx, ollama, msg, enr, minConfidence)
+	return persist(ctx, db, row, enr, out)
 }
 
-// Parse the message from Kafka and Validate the data
-func parseMessage(raw []byte) (Message, bool) {
+func ParseMessage(raw []byte) (Message, bool) {
 	var msg Message
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		applog.Err.Printf("skip bad json: %v", err)
@@ -106,6 +101,28 @@ func parseMessage(raw []byte) (Message, bool) {
 		return Message{}, false
 	}
 	return msg, true
+}
+
+// Process classifies an already-enriched message. No Kafka, GitHub, or Postgres.
+func Process(ctx context.Context, ollama reason.Completer, msg Message, enr *githubclient.Enrichment, minConfidence float64) (store.Row, reason.Outcome) {
+	out := reason.Classify(ctx, ollama, inputFrom(enr), msg.EventID, minConfidence)
+	row := rowFromMessage(msg)
+	row.Title = enr.Title
+	if enr.HTMLURL != "" {
+		row.PRURL = enr.HTMLURL
+	}
+	if enr.Author != "" {
+		row.Author = enr.Author
+	}
+	row.Category = out.Category
+	row.Source = out.Source
+	row.Rationale = out.Rationale
+	row.Error = out.Error
+	row.Confidence = out.Confidence
+	row.AffectedArea = out.AffectedArea
+	row.Summary = out.Summary
+	row.ClassifiedAt = time.Now()
+	return row, out
 }
 
 // Enrich the data with GH API by fetching the PR data not in the kafka message
@@ -129,32 +146,17 @@ func inputFrom(enr *githubclient.Enrichment) reason.Input {
 	return reason.Input{Title: enr.Title, Body: enr.Body, Files: files}
 }
 
-func persist(ctx context.Context, db *store.Store, msg Message, enr *githubclient.Enrichment, out reason.Outcome) error {
-	row := rowFromMessage(msg)
-	row.Title = enr.Title
-	if enr.HTMLURL != "" {
-		row.PRURL = enr.HTMLURL
-	}
-	if enr.Author != "" {
-		row.Author = enr.Author
-	}
-	row.Category = out.Category
-	row.Source = out.Source
-	row.Rationale = out.Rationale
-	row.Error = out.Error
-	row.Confidence = out.Confidence
-	row.AffectedArea = out.AffectedArea
-	row.Summary = out.Summary
+func persist(ctx context.Context, db *store.Store, row store.Row, enr *githubclient.Enrichment, out reason.Outcome) error {
 	if err := db.Upsert(ctx, row); err != nil {
 		return err
 	}
-	debugdump.WriteJSON(msg.EventID, "results.txt", row)
+	debugdump.WriteJSON(row.EventID, "results.txt", row)
 	conf := ""
 	if row.Confidence != nil {
 		conf = fmt.Sprintf("%g", *row.Confidence)
 	}
 	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d confidence=%s summarize_retries=%d classify_retries=%d",
-		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files), conf, out.SummarizeRetries, out.ClassifyRetries)
+		row.EventID, row.Repo, row.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files), conf, out.SummarizeRetries, out.ClassifyRetries)
 	return nil
 }
 

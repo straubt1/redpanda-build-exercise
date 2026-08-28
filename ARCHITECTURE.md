@@ -80,7 +80,7 @@ Group `pr-triage-worker`, `franz-go`, auto-commit off, new groups from start. Ha
 | --- | --- |
 | Postgres down | No. Process exits; Compose restarts; redelivery |
 | GitHub 4xx/5xx or model/parse exhausted | Yes. Row `unknown`, `source=fallback`, `error` set |
-| Bad topic JSON / missing `event_id`\|`repo`\|`pr_number` | Yes. No row |
+| Bad topic JSON or missing ids | Yes. No row |
 
 1. Enrich: `GET /repos/{owner}/{repo}/pulls/{n}` and `.../files?per_page=N`. Token + User-Agent. `N` = `REASON_MAX_NUMBER_FILES` (20). Each patch cut at `REASON_MAX_FILE_PATCH_SIZE` (4000), heading marked `[truncated]`. First files page only. Binary files often have no patch.
 2. Empty body and zero files: `unknown` / `fallback`. No LLM.
@@ -110,16 +110,6 @@ Unauthenticated. Unknown `sort`: 400 JSON, default HTML. `public`, `affected_are
 
 `db/schema.sql` runs once on an empty volume. Schema change: `task infra:down:clean`. Upsert `ON CONFLICT (event_id)`. `created_at` is RFC3339 from the topic, never a raw epoch. Postgres 18 volume path is `/var/lib/postgresql`.
 
-## Simulate
-
-`sim/pr-opened/*.json`, `event_id` prefix `sim-`. `rpk produce` inside Redpanda. Connect unchanged. Real public `repo`/`pr_number` so GET pull still works (token still required).
-
-```
-task sim:replay    # DELETE sim-% rows, recreate topic (wipes all messages), produce
-```
-
-`sim:reset` recreates the topic (not sim-only). `sim:reset:all` truncates the table. Rule fixtures: `sim-004` → `docs`; `sim-005` → `dependency-bump`.
-
 ## Env
 
 | Var | Default | Where |
@@ -143,11 +133,11 @@ task sim:replay    # DELETE sim-% rows, recreate topic (wipes all messages), pro
 
 4. **Changing `OLLAMA_MODEL`.** `ollama-pull` already exited and will not run again. Recreate it (`docker compose up --force-recreate ollama-pull`) and recreate `reason` so it picks up the new name. If you recreate `ollama` first, its healthcheck greps the new name and `reason` waits until the pull finishes. If you only bounce `reason`, Ollama 404s the missing tag and rows land `unknown`.
 
-5. **Empty UI after a healthy stack.** `/events` rarely has `opened`. `task github:events`, or Console `http://localhost:8081/topics/github.pr.opened/` (needs `--profile debug`). Or `task sim:replay`. Cap=1 means at most one live PR per 30s.
+5. **Empty UI after a healthy stack.** `/events` rarely has `opened`. `task github:events`, or Console `http://localhost:8081/topics/github.pr.opened/` (needs `--profile debug`). Cap=1 means at most one live PR per 30s.
 
 6. **Model rows lag.** Docker Ollama on Mac is CPU. 180s timeout per call. Summarize + classify + retries can block the consumer for minutes. Rule hits show up first. `task logs SERVICE=reason`.
 
-7. **`unknown` will not heal on the next poll.** Cache dropped that `event_id`; the worker already acked. Replay the JSON (or `sim:replay`). Keeping the Redpanda volume while wiping Postgres yields an empty table and a consumer that thinks it is caught up.
+7. **`unknown` will not heal on the next poll.** Cache dropped that `event_id`; the worker already acked. Replay the JSON. Keeping the Redpanda volume while wiping Postgres yields an empty table and a consumer that thinks it is caught up.
 
 8. **Schema not updating.** Init scripts run once. Wipe volumes.
 

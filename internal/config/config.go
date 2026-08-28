@@ -63,6 +63,24 @@ func FromEnv() (Config, error) {
 	return cfg, nil
 }
 
+type LLMConfig struct {
+	OllamaURL           string
+	OllamaModel         string
+	ConfidenceThreshold float64
+}
+
+func LLMFromEnv() (LLMConfig, error) {
+	threshold, err := getenvFloat("CONFIDENCE_THRESHOLD", 0.6)
+	if err != nil {
+		return LLMConfig{}, err
+	}
+	return LLMConfig{
+		OllamaURL:           getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
+		OllamaModel:         getenv("OLLAMA_MODEL", "llama3:8b"),
+		ConfidenceThreshold: threshold,
+	}, nil
+}
+
 type ServeConfig struct {
 	PostgresDSN string
 	HTTPAddr    string

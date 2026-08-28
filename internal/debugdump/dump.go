@@ -9,7 +9,11 @@ import (
 	"github.com/straubt1/redpanda-build-exercise/internal/applog"
 )
 
-const Root = "/logs"
+var Root = "/logs"
+
+func SetRoot(dir string) {
+	Root = dir
+}
 
 func Write(eventID, relPath string, data []byte) {
 	id := filepath.Base(eventID)

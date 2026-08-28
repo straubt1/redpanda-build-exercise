@@ -1,0 +1,26 @@
+{
+  "title": "Add --json flag to status",
+  "body": "Adds a JSON output mode for the status command so scripts can parse it.",
+  "html_url": "https://github.com/example/cli/pull/3",
+  "author": "carol",
+  "files": [
+    {
+      "filename": "README.md",
+      "status": "modified",
+      "patch": "@@ -12,0 +13,2 @@\n+Use `--json` for machine-readable status.\n",
+      "additions": 1,
+      "deletions": 0,
+      "changes": 1,
+      "truncated": false
+    },
+    {
+      "filename": "cmd/status.go",
+      "status": "modified",
+      "patch": "@@ -8,6 +8,12 @@\n func statusCmd() {\n+\tjsonOut := flag.Bool(\"json\", false, \"print status as JSON\")\n \tflag.Parse()\n \tif *jsonOut {\n+\t\tenc := json.NewEncoder(os.Stdout)\n+\t\t_ = enc.Encode(currentStatus())\n+\t\treturn\n+\t}\n \tfmt.Println(currentStatus())\n }\n",
+      "additions": 6,
+      "deletions": 0,
+      "changes": 6,
+      "truncated": false
+    }
+  ]
+}

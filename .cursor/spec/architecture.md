@@ -279,6 +279,30 @@ Empty table: visible empty state, not a 500.
 
 Compose service **`reason`**. Binary `cmd/reason`. Consumes `github.pr.opened`, fetches GitHub, Rules or Models, upserts `pr_triages`. No host port. Needs Kafka, Postgres, `GITHUB_TOKEN`, host Ollama at `host.docker.internal:11434`. Always-on debug dumps under `/logs/{event_id}/` (kafka message, enrichment, prompts, Postgres row); fail-open. Compose bind-mounts `.local/reason-logs:/logs`.
 
+## Reason-test (offline)
+
+Host CLI `cmd/reason-test`. Not a Compose service. Fixture runner, not `go test`.
+
+```text
+tests/<name>/message.json + enrichment.json
+        │
+        ▼
+  cmd/reason-test
+        │
+        ▼
+  worker.Process  (reason.Classify: Rules or Summarize→Classification)
+        │
+        ▼
+  tests/<name>/results/outcome.json
+```
+
+- Usage: `go run ./cmd/reason-test tests/<name>` (positional directory). Task: `reason:test DIR=tests/<name>`.
+- `message.json` is the work-topic schema above. Extra keys are ignored. Same completeness check as the consumer (`event_id`, `repo`, `pr_number`).
+- `enrichment.json` is the post-fetch `githubclient.Enrichment` (`title`, `body`, `html_url`, `author`, `files[]`). Loaded as-is; no GitHub call; no file-budget re-apply.
+- `worker.Process` is the shared seam: Classify + persist-shaped `store.Row`. Live `handleMessage` still does parse → GitHub enrich → Process → upsert.
+- `results/` is recreated each run. `outcome.json` is the persist-shaped row (`classified_at` set to now). Model prompts (when Rules miss) go under `results/{event_id}/prompts/` via `debugdump.SetRoot`.
+- Config: `OLLAMA_URL` (default `http://127.0.0.1:11434`), `OLLAMA_MODEL`, `CONFIDENCE_THRESHOLD`. No `GITHUB_TOKEN`, Kafka, or Postgres.
+
 ## Compose (target for the last infra phase)
 
 Services: `redpanda`, `connect`, `postgres`, **`reason`**, **`serve`**. Local inspect (Compose profile `debug`): Console `:8081`, pgAdmin `:8082` (not the product UI). **Ollama is not a Compose service** — it runs on the host (`task ollama:up`). **`reason`** calls `host.docker.internal:11434`.

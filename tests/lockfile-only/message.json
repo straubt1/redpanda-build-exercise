@@ -1,0 +1,10 @@
+{
+  "event_id": "test-lockfile-only",
+  "repo": "example/app",
+  "pr_number": 2,
+  "pr_url": "https://github.com/example/app/pull/2",
+  "author": "bob",
+  "action": "opened",
+  "created_at": "2026-08-28T15:01:00Z",
+  "public": true
+}
