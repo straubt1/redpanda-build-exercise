@@ -253,7 +253,7 @@ Implement Phase 6 only from .cursor/spec/.
 
 Do **not** add an `ollama` Compose service. Ollama runs on the host (`task ollama:up`). The app container must call `host.docker.internal:11434`.
 
-Go LLM client against Ollama's OpenAI-compatible API (or native). Timeouts required. Model name from env / Taskfile `OLLAMA_MODEL` (working default `qwen2.5:14b`).
+Go LLM client against Ollama's OpenAI-compatible API (or native). Timeouts required. Model name from env / Taskfile `OLLAMA_MODEL` (working default `llama3:8b`).
 
 For records that did not skip-LLM:
 1. extract prompt → parse/retry

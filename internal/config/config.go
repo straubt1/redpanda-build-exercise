@@ -42,7 +42,7 @@ func FromEnv() (Config, error) {
 		GitHubToken:         os.Getenv("GITHUB_TOKEN"),
 		GitHubUserAgent:     getenv("GITHUB_USER_AGENT", "redpanda-build-exercise"),
 		OllamaURL:           getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
-		OllamaModel:         getenv("OLLAMA_MODEL", "qwen2.5:14b"),
+		OllamaModel:         getenv("OLLAMA_MODEL", "llama3:8b"),
 		MaxNumberFiles:      maxFiles,
 		MaxFilePatchSize:    maxPatch,
 		ConfidenceThreshold: threshold,

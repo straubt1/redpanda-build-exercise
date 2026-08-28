@@ -5,7 +5,7 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 ## How to classify
 
 - Use Summary, Body, and Changed Files. Prefer patches and file paths over the title.
-- category must be one of: security, feature, refactor, docs, dependency-bump, unknown.
+- category must be one of the labels in Categories. Use the exact heading string (hyphenated).
 - rationale: one or two sentences citing the files or body that support the label.
 - Summary: `affected_area` and `summary` from step 1. Trust them when they match the files; if they conflict, prefer the files.
 - Title: always first in Input; may be an empty string. Weak context only; do not classify from it alone.
@@ -13,6 +13,40 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 - Changed Files (counts): `additions`, `deletions`, `changes` summed across the files in Input. The file list may be capped, so these totals are for the listed files, not necessarily the whole PR.
 - Each file: `#### {filename} ({status})` then a patch when one exists. Status is typically added, modified, or removed. If the heading ends with `[truncated]`, the patch was cut and later hunks are missing. A file may have no patch (binary, or GitHub omitted it).
 - How to read a patch: it is a unified diff (git diff hunks from GitHub's Files API), usually starting at `@@` rather than `diff --git`. `@@ -oldStart,oldCount +newStart,newCount @@` begins a hunk. The first character of each following line is the marker: space = unchanged context, `-` = removed from the old file, `+` = added in the new file; the rest of the line is content. Do not treat later `+`/`-` in the line as markers. If `[truncated]`, classify from what is visible plus filename, status, and counts; do not invent missing hunks; lower confidence when the cut could hide the real change.
+
+## Categories
+
+Pick the single best fit from the patches and paths. A mixed tree (docs + code, lockfile + code) is not `docs` or `dependency-bump` — classify the code change.
+
+### security
+- Authn/authz, crypto, secrets, tokens, permissions, or a vulnerability fix in the hunks.
+- New or tightened validation of untrusted input (SQL, XSS, path, SSRF) counts; a routine form field does not.
+- A changelog that only *mentions* security is not enough; the files must show it.
+
+### feature
+- New user-visible behavior, API, CLI flag, endpoint, or UI that did not exist before.
+- Additive: new files or new branches of logic, not a rename of existing code.
+- Tests or docs added alongside the new behavior still count as `feature`.
+
+### refactor
+- Same behavior, different structure: rename, extract, move, delete dead code, restyle.
+- No new capability in the hunks. If a refactor ships a new path or flag, prefer `feature`.
+- Churn with no functional signal (import reorder, format-only) is `refactor`, not `unknown`.
+
+### docs
+- Documentation only: `.md`, RST, comments/docstrings, typo fixes in prose, examples in docs dirs.
+- Code + docs together is not `docs`; label the code change.
+- Config or script changes are not docs even if a README is also touched.
+
+### dependency-bump
+- Version pins, lockfiles, or manifest version fields (`package.json`, `go.mod`, `Cargo.toml`, `requirements*.txt`) with little or no app logic.
+- Transitive lockfile-only diffs (`package-lock.json`, `go.sum`, `yarn.lock`, …) are this label.
+- A lockfile plus substantial application code is not `dependency-bump`; classify the code.
+
+### unknown
+- Evidence is missing, truncated beyond use, or fits none of the labels above.
+- Use this when two labels fit equally and you cannot honestly pick one.
+- Do not use `unknown` to avoid a close call; pick the better label and lower confidence.
 
 ## Confidence
 

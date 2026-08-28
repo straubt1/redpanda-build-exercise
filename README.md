@@ -31,7 +31,7 @@ task ollama:check         # API only
 task ollama:down          # stop whatever is listening on 11434
 ```
 
-Model name is Taskfile var `OLLAMA_MODEL` (default `qwen2.5:14b`). If `ollama:check` warns it is missing: `ollama pull qwen2.5:14b`.
+Model name is `OLLAMA_MODEL` (default `llama3:8b`). Override in `.env`. If `ollama:check` warns it is missing: `ollama pull llama3:8b`.
 
 ## Simulate opened PRs
 

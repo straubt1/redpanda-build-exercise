@@ -93,6 +93,24 @@ func TestClassifyPrompt_hasConfidenceSection(t *testing.T) {
 	}
 }
 
+func TestClassifyPrompt_hasCategoriesSection(t *testing.T) {
+	got := classifyPrompt(sampleEvidence(), Summary{AffectedArea: "a", Summary: "s"})
+	catsAt := strings.Index(got, "## Categories\n")
+	confAt := strings.Index(got, "## Confidence\n")
+	if catsAt < 0 || confAt < 0 || catsAt > confAt {
+		t.Fatalf("## Categories must precede ## Confidence: %q", got)
+	}
+	want := []string{"### security\n", "### feature\n", "### refactor\n", "### docs\n", "### dependency-bump\n", "### unknown\n"}
+	prev := catsAt
+	for _, h := range want {
+		i := strings.Index(got, h)
+		if i < 0 || i < prev {
+			t.Fatalf("missing or out of order %q in %q", h, got)
+		}
+		prev = i
+	}
+}
+
 func TestSummarizePrompt_omitsPatches(t *testing.T) {
 	got := summarizePrompt(Input{
 		Title: "UNIQUE_TITLE_TOKEN",

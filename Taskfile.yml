@@ -6,7 +6,7 @@ vars:
   TOPIC: github.pr.opened
   USER_AGENT: redpanda-build-exercise
   SIM_DIR: sim/pr-opened
-  OLLAMA_MODEL: qwen2.5:14b
+  OLLAMA_MODEL: llama3:8b
   OLLAMA_HOST: 0.0.0.0:11434
   OLLAMA_URL: http://127.0.0.1:11434
   OLLAMA_LOG: .local/ollama.log
@@ -43,7 +43,7 @@ tasks:
           echo "GITHUB_TOKEN must be set in .env for Connect and Reason" >&2
           exit 1
         fi
-      - docker compose --profile debug up -d --build --wait
+      - docker compose --profile debug up -d --build
       - |
         echo "Stack is up"
         echo "  - Serve    http://localhost:8080"

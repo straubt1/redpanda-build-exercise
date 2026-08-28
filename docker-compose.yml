@@ -37,6 +37,29 @@ services:
       timeout: 5s
       retries: 10
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3:8b}
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      # list = weights on disk (what reason needs). ps = in-memory; Ollama unloads after idle.
+      test: ["CMD-SHELL", "ollama list | grep \"$$OLLAMA_MODEL\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 5m
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    network_mode: 'service:ollama'
+    entrypoint: /bin/sh
+    command: -c 'ollama pull ${OLLAMA_MODEL:-llama3:8b}'
+    restart: "no"
+
   connect:
     image: docker.redpanda.com/redpandadata/connect:4.106.0
     depends_on:
@@ -62,6 +85,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     environment:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: github.pr.opened
@@ -69,8 +94,8 @@ services:
       POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       GITHUB_USER_AGENT: redpanda-build-exercise
-      OLLAMA_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:14b}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3:8b}
       REASON_MAX_NUMBER_FILES: ${REASON_MAX_NUMBER_FILES:-20}
       REASON_MAX_FILE_PATCH_SIZE: ${REASON_MAX_FILE_PATCH_SIZE:-4000}
       CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.6}
@@ -135,3 +160,4 @@ services:
 
 volumes:
   postgres_data:
+  ollama-data:

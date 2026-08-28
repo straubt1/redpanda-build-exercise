@@ -20,7 +20,7 @@ type Client struct {
 func New(baseURL, model string) *Client {
 	baseURL = strings.TrimRight(baseURL, "/")
 	if model == "" {
-		model = "qwen2.5:14b"
+		model = "llama3:8b"
 	}
 	return &Client{
 		base:  baseURL,

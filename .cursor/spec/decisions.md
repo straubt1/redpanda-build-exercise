@@ -79,7 +79,8 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | When column | Browser local time | Display like `1:30 pm`; `title` hover is full local datetime with seconds. Tiny inline JS; no library. |
 | JSON API | `GET /api/triages` | Same row set as `GET /`, plus `stats`. |
 | GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. Cap opened PRs per sweep via `CONNECT_BATCH_LIMIT` (default **1**; `batch_index() >= N` → drop) before cache. Cache still drops duplicate `id`s. |
-| Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
+| Ollama model | `llama3:8b` | Env / Taskfile var `OLLAMA_MODEL`. Override in `.env` (e.g. `qwen2.5:14b`). Pull: `ollama pull llama3:8b`. |
+| Ollama URL | `http://ollama:11434` | Compose default for **`reason`**. Host Ollama from that container is `http://host.docker.internal:11434` (set in `.env`). Do not use `127.0.0.1` inside the container. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
 | Confidence branch | `CONFIDENCE_THRESHOLD` (default **0.6**). After a valid Classification, if `confidence` **<** threshold, **one** extra classify attempt (same Summary + Input; do not re-run Summarize). Persist the last valid result even if still below. Do not force `unknown`. Do not put the threshold in `classify.txt` (models would round up to pass). Override in `.env`. | Locked as control-flow retry |
 | Lockfile names | See list below | Widen later via the same Rule list |
@@ -91,7 +92,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
 | Inspect Postgres UI | pgAdmin `http://localhost:8082` | Compose profile `debug` (`docker compose --profile debug up -d`). No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
 | Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `up` starts `OLLAMA_HOST=0.0.0.0:11434 ollama serve` unless `GET http://127.0.0.1:11434/api/ps` is already OK. `down` is `pgrep ollama` then `/bin/kill`. Logs: `.local/ollama.log`. |
-| `infra:up` | Default Compose stack | Postgres, Redpanda, Connect, **reason**, **serve**. Creates the work topic. Requires `GITHUB_TOKEN`. Ollama stays on the host (`task ollama:up`). Console and pgAdmin are profile `debug`. |
+| `infra:up` | Default Compose stack | Postgres, Redpanda, Connect, **reason**, **serve**, Compose **ollama** + **ollama-pull**. Requires `GITHUB_TOKEN`. Console and pgAdmin are profile `debug`. |
 | `infra:down` | Stop that stack, keep volumes | `infra:down:clean` also deletes volumes. |
 | jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
 | Reason debug dumps | `/logs/{event_id}/` | Always on. Kafka message, enrichment, created prompts + Ollama responses, Postgres row. Fail-open (stderr). Compose bind-mounts `.local/reason-logs:/logs`. |
@@ -127,7 +128,7 @@ Do not silently resolve these into architecture-changing behavior.
 
 ### Must decide before a polished demo (not before Phase 1)
 
-- Exact Ollama model if `qwen2.5:14b` is too weak or too slow on diffs
+- Exact Ollama model if `llama3:8b` is too weak on diffs (local override: `qwen2.5:14b`)
 - What the UI highlights (`security` first? filter? confidence sort?)
 - Customer paragraph: who uses this, what decision a row drives, cost of wrong/missing
 - Which **two** official tradeoff pairs to write in README (human-only)
@@ -189,3 +190,5 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — Console and pgAdmin sit on Compose profile `debug`. They are not started by `docker compose up` / `task infra:up`. Start with `docker compose --profile debug up -d`.
 - 2026-08-27 — Reason file budget is `REASON_MAX_NUMBER_FILES` (default 20) and `REASON_MAX_FILE_PATCH_SIZE` (default 4000). Override in `.env`; Compose passes both into the reason service.
 - 2026-08-27 — Classification: `CONFIDENCE_THRESHOLD` (default 0.6). One extra classify attempt if parsed confidence is below; persist even if still low. Do not re-Summarize or force `unknown`.
+- 2026-08-27 — Ollama working default is `llama3:8b` (`OLLAMA_MODEL`). Override in `.env`.
+- 2026-08-27 — `reason` default `OLLAMA_URL` is `http://ollama:11434` (Compose service). Override in `.env` to `http://host.docker.internal:11434` for host Ollama.
