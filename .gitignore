@@ -24,9 +24,18 @@ profile.cov
 go.work
 go.work.sum
 
+# Built binaries
+/bin/
+
 # env file
 .env
 
 # Editor/IDE
 # .idea/
 # .vscode/
+
+.local/
+.reference/
+
+# Offline reason-test output
+tests/**/results/

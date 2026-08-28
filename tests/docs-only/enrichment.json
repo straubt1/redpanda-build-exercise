@@ -1,0 +1,26 @@
+{
+  "title": "Fix typo in README",
+  "body": "Corrects a heading in the getting-started guide.",
+  "html_url": "https://github.com/example/docs/pull/1",
+  "author": "alice",
+  "files": [
+    {
+      "filename": "README.md",
+      "status": "modified",
+      "patch": "@@ -1,3 +1,3 @@\n-# Docs\n+# Documentation\n",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "truncated": false
+    },
+    {
+      "filename": "docs/guide.md",
+      "status": "modified",
+      "patch": "@@ -10,1 +10,1 @@\n-Getting started.\n+Getting started with the CLI.\n",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "truncated": false
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+# GitHub /events → opened PRs → topic github.pr.opened.
+# No LLM here. Reasoning is the Go worker (later phases).
+#
+# generate ticks every 30s; http GETs multiple /events pages for a larger window.
+# Rate limit allows those GETs in one sweep (not 1/30s, which would serialize pages).
+
+rate_limit_resources:
+  - label: github_poll
+    local:
+      count: 3
+      interval: 30s
+
+cache_resources:
+  - label: seen_events
+    memory:
+      default_ttl: 24h
+
+input:
+  generate:
+    interval: 30s
+    mapping: "root = [1, 2, 3]"
+
+pipeline:
+  processors:
+    - unarchive:
+        format: json_array
+    # Empty body for GET; page comes from metadata (http would otherwise POST the number).
+    - mapping: |
+        meta page = this.string()
+        root = ""
+    - http:
+        url: 'https://api.github.com/events?per_page=100&page=${! meta("page") }'
+        verb: GET
+        headers:
+          Accept: application/vnd.github+json
+          User-Agent: redpanda-build-exercise
+          Authorization: Bearer ${GITHUB_TOKEN}
+          X-GitHub-Api-Version: "2022-11-28"
+        rate_limit: github_poll
+        timeout: 30s
+        retries: 3
+        backoff_on:
+          - 429
+          - 503
+        # unarchive leaves the page GETs as one batch; true = those GETs at once.
+        parallel: true
+    - mapping: |
+        root = if errored() { deleted() } else { this }
+    - unarchive:
+        format: json_array
+    - mapping: |
+        root = if errored() { deleted() } else { this }
+    # Action allowlist — add strings here to ingest more PR events without a new pipeline.
+    - mapping: |
+        let allow = ["opened"]
+        root = if this.type != "PullRequestEvent" || !$allow.contains(this.payload.action.or("")) {
+          deleted()
+        } else {
+          {
+            "event_id": this.id.string(),
+            "repo": this.repo.name.or(""),
+            "pr_number": this.payload.pull_request.number.or(this.payload.number),
+            "pr_url": this.payload.pull_request.url.or(""),
+            "author": this.actor.login.or(this.payload.pull_request.user.login.or("")),
+            "action": this.payload.action.or(""),
+            "created_at": this.created_at.or(""),
+            "public": this.public.or(false)
+          }
+        }
+    # Cap survivors per generate sweep (batch_index is 0-based; only applies while still one batch).
+    # CONNECT_BATCH_LIMIT default 1; set in .env to keep more opened PRs per 30s tick.
+    - mapping: |
+        root = if batch_index() >= ${CONNECT_BATCH_LIMIT:1} { deleted() } else { this }
+    - cache:
+        resource: seen_events
+        operator: add
+        key: '${! json("event_id") }'
+        value: "1"
+    - mapping: |
+        root = if errored() { deleted() } else { this }
+
+output:
+  redpanda:
+    seed_brokers:
+      - redpanda:9092
+    topic: github.pr.opened
+    max_in_flight: 16

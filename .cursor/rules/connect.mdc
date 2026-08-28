@@ -1,0 +1,27 @@
+---
+description: Connect ingest — filter, project, cache; no LLM
+globs: connect/**
+alwaysApply: false
+---
+
+# Connect (plumbing only)
+
+`generate` every 30s, then `http` GET `https://api.github.com/events?per_page=100&page=N` across **multiple pages** so each sweep covers more of the timeline. Headers: `GITHUB_TOKEN`, a non-empty `User-Agent`, `Accept: application/vnd.github+json`. Rate-limit the GETs so that sweep can finish inside the interval.
+
+- Explode each page JSON **array** into one message per event before filter.
+- Keep `PullRequestEvent` where `payload.action` is in an allowlist (`opened` only for v1).
+- Cap surviving messages per generate sweep (`batch_index() >= ${CONNECT_BATCH_LIMIT:1}` → `deleted()`), then cache. Default **1**; override with `CONNECT_BATCH_LIMIT` in `.env`.
+- Project the work-topic schema in `.cursor/spec/architecture.md`. One Bloblang mapping; `mapping` rebuilds `root`.
+- Cache on GitHub event `id`. Produce `github.pr.opened`.
+- Never call Ollama / OpenAI from Connect.
+
+```bloblang
+# ❌ BAD — `allow` is this.allow; let vars are $name
+!allow.contains(this.payload.action)
+
+# ✅ GOOD
+let allow = ["opened"]
+!$allow.contains(this.payload.action.or(""))
+```
+
+Details: `.cursor/spec/architecture.md` (Connect section).

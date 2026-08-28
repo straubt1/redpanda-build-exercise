@@ -1,0 +1,25 @@
+---
+description: Taskfile — namespace:verb names, vars not extra targets, scripts may be multi-step
+globs: Taskfile.yml
+alwaysApply: false
+---
+
+# Taskfile
+
+Follow `.cursor/spec/devloop.md`. `version: '3'` and `dotenv: ['.env']`.
+
+- Names: `namespace:verb` (two segments max). Singletons (`setup`, `up`, `down`, `test`, `logs`) have no colon. Exception: `infra:down:clean` (volume wipe).
+- Variants are **vars** (`FOLLOW=1`, `VERBOSE=1`, `SERVICE=connect`), not `foo:bar:baz` targets.
+- A task may be a short script (one curl, several `jq` views). Do not split that into three tasks.
+- `deps:` for real prerequisites (`connect:up` → `infra:up`). Do not copy `.reference/Taskfile.yml`.
+
+```yaml
+# ❌ BAD — task sprawl
+github:events:summary: ...
+github:events:opened: ...
+topic:consume:follow: ...
+
+# ✅ GOOD
+github:events:  # histogram + opened PRs; VERBOSE=1 for full page
+topic:consume:  # N=5 default; FOLLOW=1 to tail
+```

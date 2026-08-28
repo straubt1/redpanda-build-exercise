@@ -1,0 +1,10 @@
+{
+  "event_id": "test-mixed-tiny",
+  "repo": "example/cli",
+  "pr_number": 3,
+  "pr_url": "https://github.com/example/cli/pull/3",
+  "author": "carol",
+  "action": "opened",
+  "created_at": "2026-08-28T15:02:00Z",
+  "public": true
+}

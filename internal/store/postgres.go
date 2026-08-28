@@ -1,0 +1,179 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Store struct {
+	pool *pgxpool.Pool
+}
+
+type Row struct {
+	EventID      string     `json:"event_id"`
+	Repo         string     `json:"repo"`
+	PRNumber     int        `json:"pr_number"`
+	Title        string     `json:"title"`
+	PRURL        string     `json:"pr_url"`
+	Author       string     `json:"author"`
+	Action       string     `json:"action"`
+	Public       bool       `json:"public"`
+	Category     string     `json:"category"`
+	Source       string     `json:"source"`
+	Rationale    string     `json:"rationale"`
+	Error        string     `json:"error"`
+	Confidence   *float64   `json:"confidence"`
+	AffectedArea string     `json:"affected_area"`
+	Summary      string     `json:"summary"`
+	CreatedAt    *time.Time `json:"created_at"`
+	ClassifiedAt time.Time  `json:"classified_at"`
+}
+
+func Connect(ctx context.Context, dsn string) (*Store, error) {
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("pgxpool: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("postgres ping: %w", err)
+	}
+	return &Store{pool: pool}, nil
+}
+
+func (s *Store) Close() {
+	s.pool.Close()
+}
+
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
+var sortColumns = map[string]string{
+	"classified_at": "classified_at",
+	"category":      "category",
+	"repo":          "repo",
+	"title":         "title",
+	"confidence":    "confidence",
+	"source":        "source",
+	"pr_number":     "pr_number",
+	"author":        "author",
+	"event_id":      "event_id",
+	"public":        "public",
+}
+
+const (
+	DefaultSort = "classified_at"
+	DefaultDir  = "desc"
+	ListCap     = 20
+)
+
+type Stats struct {
+	Total   int64 `json:"total"`
+	Pending int64 `json:"pending"`
+	Model   int64 `json:"model"`
+	Rule    int64 `json:"rule"`
+}
+
+// NormalizeOrder allowlists sort identifiers. ok is false if sort is set but unknown.
+func NormalizeOrder(sort, dir string) (col, direction string, ok bool) {
+	if sort == "" {
+		sort = DefaultSort
+	}
+	col, ok = sortColumns[sort]
+	if !ok {
+		return DefaultSort, DefaultDir, false
+	}
+	switch dir {
+	case "asc", "desc":
+		direction = dir
+	default:
+		direction = DefaultDir
+	}
+	return col, direction, true
+}
+
+func (s *Store) List(ctx context.Context, sortCol, dir string, limit int) ([]Row, error) {
+	if limit <= 0 {
+		limit = ListCap
+	}
+	col, direction, ok := NormalizeOrder(sortCol, dir)
+	if !ok {
+		col, direction = DefaultSort, DefaultDir
+	}
+	q := fmt.Sprintf(`
+SELECT event_id, repo, pr_number, title, pr_url, author, action, public,
+  category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
+FROM (
+  SELECT event_id, repo, pr_number, title, pr_url, author, action, public,
+    category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
+  FROM pr_triages
+  ORDER BY classified_at DESC
+  LIMIT %d
+) recent
+ORDER BY %s %s NULLS LAST
+`, limit, col, direction)
+	rows, err := s.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Row
+	for rows.Next() {
+		var r Row
+		if err := rows.Scan(
+			&r.EventID, &r.Repo, &r.PRNumber, &r.Title, &r.PRURL, &r.Author, &r.Action, &r.Public,
+			&r.Category, &r.Source, &r.Rationale, &r.Error, &r.Confidence, &r.AffectedArea, &r.Summary,
+			&r.CreatedAt, &r.ClassifiedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Counts(ctx context.Context) (Stats, error) {
+	var st Stats
+	err := s.pool.QueryRow(ctx, `
+SELECT
+  COUNT(*)::bigint,
+  COUNT(*) FILTER (WHERE source NOT IN ('model', 'rule'))::bigint,
+  COUNT(*) FILTER (WHERE source = 'model')::bigint,
+  COUNT(*) FILTER (WHERE source = 'rule')::bigint
+FROM pr_triages
+`).Scan(&st.Total, &st.Pending, &st.Model, &st.Rule)
+	return st, err
+}
+
+func (s *Store) Upsert(ctx context.Context, row Row) error {
+	_, err := s.pool.Exec(ctx, `
+INSERT INTO pr_triages (
+  event_id, repo, pr_number, title, pr_url, author, action, public,
+  category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
+ON CONFLICT (event_id) DO UPDATE SET
+  repo = EXCLUDED.repo,
+  pr_number = EXCLUDED.pr_number,
+  title = EXCLUDED.title,
+  pr_url = EXCLUDED.pr_url,
+  author = EXCLUDED.author,
+  action = EXCLUDED.action,
+  public = EXCLUDED.public,
+  category = EXCLUDED.category,
+  source = EXCLUDED.source,
+  rationale = EXCLUDED.rationale,
+  error = EXCLUDED.error,
+  confidence = EXCLUDED.confidence,
+  affected_area = EXCLUDED.affected_area,
+  summary = EXCLUDED.summary,
+  created_at = EXCLUDED.created_at,
+  classified_at = now()
+`, row.EventID, row.Repo, row.PRNumber, row.Title, row.PRURL, row.Author, row.Action, row.Public,
+		row.Category, row.Source, row.Rationale, row.Error, row.Confidence, row.AffectedArea, row.Summary, row.CreatedAt)
+	return err
+}

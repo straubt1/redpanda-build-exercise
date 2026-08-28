@@ -1,0 +1,166 @@
+# Phase 0–7: reason (worker) + serve (HTTP). Ollama runs in Compose and pulls the model on start.
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=redpanda:9092 || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: triage
+      POSTGRES_PASSWORD: triage
+      POSTGRES_DB: triage
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triage -d triage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3:8b}
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        ollama serve &
+        pid=$$!
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull "$$OLLAMA_MODEL"
+        wait $$pid
+    healthcheck:
+      # list = weights on disk (what reason needs). ps = in-memory; Ollama unloads after idle.
+      test: ["CMD-SHELL", "ollama list | grep \"$$OLLAMA_MODEL\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 5m
+
+  connect:
+    image: docker.redpanda.com/redpandadata/connect:4.106.0
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      CONNECT_BATCH_LIMIT: ${CONNECT_BATCH_LIMIT:-1}
+    volumes:
+      - ./connect/ingest.yaml:/connect.yaml:ro
+    command: ["run", "/connect.yaml"]
+    restart: unless-stopped
+
+  reason:
+    build:
+      context: .
+      args:
+        PACKAGE: ./cmd/reason
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: github.pr.opened
+      KAFKA_GROUP: pr-triage-worker
+      POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_USER_AGENT: redpanda-build-exercise
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3:8b}
+      REASON_MAX_NUMBER_FILES: ${REASON_MAX_NUMBER_FILES:-20}
+      REASON_MAX_FILE_PATCH_SIZE: ${REASON_MAX_FILE_PATCH_SIZE:-4000}
+      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.6}
+    # Uncomment to enable debug logging without having to drop into the container
+    volumes:
+      - ./.local/reason-logs:/logs
+    restart: unless-stopped
+
+  serve:
+    build:
+      context: .
+      args:
+        PACKAGE: ./cmd/serve
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DSN: postgres://triage:triage@postgres:5432/triage?sslmode=disable
+      HTTP_ADDR: :8080
+      SERVE_LIST_CAP: ${SERVE_LIST_CAP:-20}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.10.0
+    profiles:
+      - debug
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:9.17
+    profiles:
+      - debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_DESKTOP_USER: '"admin@local.dev"'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_DISABLE_POSTFIX: "true"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/tmp/pgpass:ro
+    ports:
+      - "8082:80"
+    restart: unless-stopped
+    user: root
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - cp /tmp/pgpass /pgpass && chown 5050:5050 /pgpass && chmod 600 /pgpass && exec /entrypoint.sh
+
+volumes:
+  postgres_data:
+  ollama-data:

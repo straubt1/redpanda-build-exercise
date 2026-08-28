@@ -1,0 +1,10 @@
+{
+  "event_id": "test-docs-only",
+  "repo": "example/docs",
+  "pr_number": 1,
+  "pr_url": "https://github.com/example/docs/pull/1",
+  "author": "alice",
+  "action": "opened",
+  "created_at": "2026-08-28T15:00:00Z",
+  "public": true
+}
