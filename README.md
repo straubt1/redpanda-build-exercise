@@ -123,17 +123,19 @@ I would flip my decision here if:
 ### Connect as the sink vs. app-side writes from the reasoning service
 
 I created a Reason Service that reads a Message from the Topic, classifies, and then Upserts into a Postgres Database.
+Only after this do I update the Offset in Redpanda to account for failure during processing.
 This Database can then be queried by one or more services to display or take action based on the results.
 
 #### Alternative
 
-The alternative would be to post classifications back to another topic (or set of topics based on which category).
+The alternative would be to post classifications back to another topic (or set of topics based on which category), then let Connect push data into Postgres.
 
-I would flip my decision here if this classification was part of a larger effort that needed to fan out messages to multiple services.
+I would flip my decision here if this classification was part of a larger effort that needed to fan out messages to multiple services or needed to handle a much larger scale.
 
 #### My Thinking
 
 * Leveraging a database here made the most sense to me (also could have been a comfort bias). Based on the instructions and how I thought about serving the data up to a web browser, it provided the safest bet. I also expected that this data would not transform after it was written, just read as part of a dashboard. I also was thinking about long term storage of this data to reflect on changes over a long time period.
+* If Connect pushed data into Postgres, that is another place I need to share credentials (and update in the future). In the current implementation Connect only needs a GitHub Token.
 * The Reason Service does in fact perform an "Upsert" however it is likely unnecessary in this example since we only have one instance of the service running (and we don't commit to Kafka that the message is classified until after the database is written). If I were to scale out the Reason Service, a double classification could occur, and the last one to write to the database would "win".
 * Overall I leaned on my KIS (Keep It Simple) philosophy and the lack of strong reasoning to push towards a more complex solution.
 
