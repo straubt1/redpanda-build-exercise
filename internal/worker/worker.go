@@ -46,9 +46,9 @@ func Run(ctx context.Context, cfg config.Config) error {
 	gh := githubclient.New(cfg.GitHubToken, cfg.GitHubUserAgent, cfg.MaxNumberFiles, cfg.MaxFilePatchSize)
 	ollama := llm.New(cfg.OllamaURL, cfg.OllamaModel)
 
-	applog.Info.Printf("consuming topic=%s group=%s brokers=%v ollama=%s model=%s max_files=%d max_patch=%d",
+	applog.Info.Printf("consuming topic=%s group=%s brokers=%v ollama=%s model=%s max_files=%d max_patch=%d confidence_threshold=%g",
 		cfg.KafkaTopic, cfg.KafkaGroup, cfg.KafkaBrokers, cfg.OllamaURL, cfg.OllamaModel,
-		cfg.MaxNumberFiles, cfg.MaxFilePatchSize)
+		cfg.MaxNumberFiles, cfg.MaxFilePatchSize, cfg.ConfidenceThreshold)
 
 	for { // Loop indefinitely, polling for new messages from Kafka
 		records, err := c.Poll(ctx)
@@ -60,7 +60,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		}
 		for _, rec := range records {
 			// Handle the message and upsert the DB - the main logic of the worker
-			if err := handleMessage(ctx, db, gh, ollama, rec.Value); err != nil {
+			if err := handleMessage(ctx, db, gh, ollama, rec.Value, cfg.ConfidenceThreshold); err != nil {
 				return fmt.Errorf("upsert offset=%d: %w", rec.Offset, err)
 			}
 			// After a successful upsert: tell the consumer group this offset is done.
@@ -72,7 +72,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 }
 
-func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte) error {
+func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client, ollama reason.Completer, raw []byte, minConfidence float64) error {
 	// Parse the message from Kafka and Validate the data
 	msg, ok := parseMessage(raw)
 	if !ok {
@@ -89,7 +89,7 @@ func handleMessage(ctx context.Context, db *store.Store, gh *githubclient.Client
 	debugdump.WriteJSON(msg.EventID, "enrichment.json", enr)
 
 	// Apply the classification - this the top level classification of the PR after all needed data is fetched
-	out := reason.Classify(ctx, ollama, inputFrom(enr), msg.EventID)
+	out := reason.Classify(ctx, ollama, inputFrom(enr), msg.EventID, minConfidence)
 	return persist(ctx, db, msg, enr, out)
 }
 
@@ -148,8 +148,12 @@ func persist(ctx context.Context, db *store.Store, msg Message, enr *githubclien
 		return err
 	}
 	debugdump.WriteJSON(msg.EventID, "results.txt", row)
-	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d summarize_retries=%d classify_retries=%d",
-		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files), out.SummarizeRetries, out.ClassifyRetries)
+	conf := ""
+	if row.Confidence != nil {
+		conf = fmt.Sprintf("%g", *row.Confidence)
+	}
+	applog.Info.Printf("upserted event_id=%s repo=%s pr=%d category=%s source=%s title=%q body_len=%d files=%d confidence=%s summarize_retries=%d classify_retries=%d",
+		msg.EventID, msg.Repo, msg.PRNumber, row.Category, row.Source, row.Title, len(enr.Body), len(enr.Files), conf, out.SummarizeRetries, out.ClassifyRetries)
 	return nil
 }
 

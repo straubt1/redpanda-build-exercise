@@ -32,7 +32,7 @@ func TestClassify_retriesThenSucceeds(t *testing.T) {
 		`{"affected_area":"cli","summary":"adds a flag"}`,
 		`{"category":"feature","confidence":0.8,"rationale":"new CLI flag"}`,
 	}}
-	got := Classify(context.Background(), llm, sampleInput(), "evt-1")
+	got := Classify(context.Background(), llm, sampleInput(), "evt-1", 0.6)
 	if got.Source != "model" || got.Category != "feature" {
 		t.Fatalf("%+v", got)
 	}
@@ -52,7 +52,7 @@ func TestClassify_retriesThenSucceeds(t *testing.T) {
 
 func TestClassify_summarizeCapStopsWithoutClassify(t *testing.T) {
 	llm := &scripted{replies: []string{"nope", "nope", "nope", `{"category":"feature","confidence":1,"rationale":"should not run"}`}}
-	got := Classify(context.Background(), llm, sampleInput(), "evt-2")
+	got := Classify(context.Background(), llm, sampleInput(), "evt-2", 0.6)
 	if got.Source != "fallback" || got.Category != "unknown" {
 		t.Fatalf("%+v", got)
 	}
@@ -71,7 +71,7 @@ func TestClassify_invalidCategoryRepairThenOK(t *testing.T) {
 		`{"category":"not-a-label","confidence":0.9,"rationale":"x"}`,
 		`{"category":"security","confidence":0.7,"rationale":"auth check"}`,
 	}
-	got := Classify(context.Background(), rec, sampleInput(), "evt-3")
+	got := Classify(context.Background(), rec, sampleInput(), "evt-3", 0.6)
 	if got.Category != "security" || got.Source != "model" {
 		t.Fatalf("%+v", got)
 	}
@@ -89,7 +89,7 @@ func TestClassify_promptPutsTitleThenBodyThenFiles(t *testing.T) {
 		`{"category":"refactor","confidence":0.4,"rationale":"rename"}`,
 	}}
 	in := Input{Title: "UNIQUE_TITLE_TOKEN", Body: "UNIQUE_BODY_TOKEN", Files: []FileInput{{Filename: "a.go", Status: "modified", Patch: "UNIQUE_PATCH_TOKEN"}}}
-	got := Classify(context.Background(), rec, in, "evt-4")
+	got := Classify(context.Background(), rec, in, "evt-4", 0)
 	if got.Category != "refactor" {
 		t.Fatalf("%+v", got)
 	}
@@ -124,7 +124,7 @@ func TestClassify_ruleSkipsModel(t *testing.T) {
 		Body:  "update readme",
 		Files: []FileInput{{Filename: "README.md", Status: "modified"}},
 	}
-	got := Classify(context.Background(), llm, in, "evt-rule")
+	got := Classify(context.Background(), llm, in, "evt-rule", 0.6)
 	if got.Source != "rule" || got.Category != "docs" {
 		t.Fatalf("%+v", got)
 	}
@@ -135,12 +135,93 @@ func TestClassify_ruleSkipsModel(t *testing.T) {
 
 func TestClassify_emptyContentSkipsModel(t *testing.T) {
 	llm := &scripted{replies: []string{`{"category":"feature","confidence":1,"rationale":"should not run"}`}}
-	got := Classify(context.Background(), llm, Input{Title: "only a title"}, "evt-empty")
+	got := Classify(context.Background(), llm, Input{Title: "only a title"}, "evt-empty", 0.6)
 	if got.Source != "fallback" || got.Category != "unknown" {
 		t.Fatalf("%+v", got)
 	}
 	if llm.n != 0 {
 		t.Fatalf("model called %d times", llm.n)
+	}
+}
+
+func TestClassify_retriesWhenConfidenceBelowThreshold(t *testing.T) {
+	rec := &recording{replies: []string{
+		`{"affected_area":"cli","summary":"adds a flag"}`,
+		`{"category":"feature","confidence":0.4,"rationale":"maybe a flag"}`,
+		`{"category":"feature","confidence":0.8,"rationale":"new CLI flag in main.go"}`,
+	}}
+	got := Classify(context.Background(), rec, sampleInput(), "evt-conf-retry", 0.6)
+	if got.Source != "model" || got.Category != "feature" {
+		t.Fatalf("%+v", got)
+	}
+	if got.Confidence == nil || *got.Confidence != 0.8 {
+		t.Fatalf("want second-attempt confidence 0.8, got %+v", got.Confidence)
+	}
+	if got.ClassifyRetries != 1 {
+		t.Fatalf("classify retries=%d", got.ClassifyRetries)
+	}
+	if rec.n != 3 {
+		t.Fatalf("calls=%d want 3", rec.n)
+	}
+	if len(rec.prompts) < 3 || !strings.Contains(rec.prompts[2], "below the 0.6 threshold") {
+		t.Fatalf("low-confidence suffix missing: %#v", rec.prompts)
+	}
+	if strings.Contains(rec.prompts[1], "below the 0.6 threshold") {
+		t.Fatalf("first classify prompt must not include the threshold")
+	}
+}
+
+func TestClassify_doesNotRetryWhenConfidenceMeetsThreshold(t *testing.T) {
+	rec := &recording{replies: []string{
+		`{"affected_area":"cli","summary":"adds a flag"}`,
+		`{"category":"feature","confidence":0.6,"rationale":"new CLI flag"}`,
+		`{"category":"security","confidence":0.9,"rationale":"should not run"}`,
+	}}
+	got := Classify(context.Background(), rec, sampleInput(), "evt-conf-ok", 0.6)
+	if got.Category != "feature" || got.Source != "model" {
+		t.Fatalf("%+v", got)
+	}
+	if got.Confidence == nil || *got.Confidence != 0.6 {
+		t.Fatalf("confidence %+v", got.Confidence)
+	}
+	if rec.n != 2 {
+		t.Fatalf("calls=%d want 2 (must not retry at threshold)", rec.n)
+	}
+	if got.ClassifyRetries != 0 {
+		t.Fatalf("classify retries=%d", got.ClassifyRetries)
+	}
+}
+
+func TestClassify_keepsFirstWhenLowConfidenceRetryFailsParse(t *testing.T) {
+	rec := &recording{replies: []string{
+		`{"affected_area":"x","summary":"y"}`,
+		`{"category":"refactor","confidence":0.4,"rationale":"rename"}`,
+		`not json`,
+	}}
+	got := Classify(context.Background(), rec, sampleInput(), "evt-conf-keep", 0.6)
+	if got.Source != "model" || got.Category != "refactor" {
+		t.Fatalf("must keep first valid classify, got %+v", got)
+	}
+	if got.Confidence == nil || *got.Confidence != 0.4 {
+		t.Fatalf("confidence %+v", got.Confidence)
+	}
+	if rec.n != 3 {
+		t.Fatalf("calls=%d want 3", rec.n)
+	}
+}
+
+func TestClassify_persistsStillLowAfterRetry(t *testing.T) {
+	rec := &recording{replies: []string{
+		`{"affected_area":"x","summary":"y"}`,
+		`{"category":"unknown","confidence":0.3,"rationale":"mixed"}`,
+		`{"category":"unknown","confidence":0.2,"rationale":"still mixed"}`,
+	}}
+	got := Classify(context.Background(), rec, sampleInput(), "evt-conf-still-low", 0.6)
+	if got.Source != "model" || got.Category != "unknown" {
+		t.Fatalf("low confidence must still persist as model, got %+v", got)
+	}
+	if got.Confidence == nil || *got.Confidence != 0.2 {
+		t.Fatalf("want last valid confidence 0.2, got %+v", got.Confidence)
 	}
 }
 

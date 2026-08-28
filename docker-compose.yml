@@ -73,6 +73,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:14b}
       REASON_MAX_NUMBER_FILES: ${REASON_MAX_NUMBER_FILES:-20}
       REASON_MAX_FILE_PATCH_SIZE: ${REASON_MAX_FILE_PATCH_SIZE:-4000}
+      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.6}
     # Uncomment to enable debug logging without having to drop into the container
     volumes:
       - ./.local/reason-logs:/logs

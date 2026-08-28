@@ -10,7 +10,7 @@ Consume `github.pr.opened`. Fetch pull body and changed files (token + User-Agen
 
 Rules are an **ordered list** (after fetch): all `.md` → `docs`; all lockfiles → `dependency-bump`. Mixed trees go to the Model. Empty file list is not `docs`.
 
-Loop: Summarize, then Classification. Parse dirty JSON (first `{...}`), normalize labels, retry, then `unknown`. Upsert Postgres on `event_id`. Labels: `security|feature|refactor|docs|dependency-bump|unknown`. `source` is `rule`, `model`, or `fallback`.
+Loop: Summarize, then Classification. Parse dirty JSON (first `{...}`), normalize labels, retry, then `unknown`. If parsed confidence is below `CONFIDENCE_THRESHOLD` (default 0.6), one extra classify attempt; persist even if still low. Upsert Postgres on `event_id`. Labels: `security|feature|refactor|docs|dependency-bump|unknown`. `source` is `rule`, `model`, or `fallback`.
 
 ```go
 // ❌ BAD

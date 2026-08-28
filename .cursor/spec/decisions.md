@@ -81,7 +81,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | GitHub poll | `generate` every **30s**, then `http` GET **multiple** pages of `/events?per_page=100` | Several requests per sweep so more of the timeline is covered; rate-limit so that sweep can finish. Cap opened PRs per sweep via `CONNECT_BATCH_LIMIT` (default **1**; `batch_index() >= N` → drop) before cache. Cache still drops duplicate `id`s. |
 | Ollama model | `qwen2.5:14b` | Taskfile var `OLLAMA_MODEL`. Pull on the host: `ollama pull qwen2.5:14b`. |
 | LLM retries | **2** extra attempts after first bad parse (3 tries total) then `unknown` | |
-| Confidence branch | Persist label + confidence; if confidence **< 0.5**, still persist but do not treat as a second model pass yet | Threshold and “second pass vs unknown” are **open**; this default unblocks Phase 6 |
+| Confidence branch | `CONFIDENCE_THRESHOLD` (default **0.6**). After a valid Classification, if `confidence` **<** threshold, **one** extra classify attempt (same Summary + Input; do not re-run Summarize). Persist the last valid result even if still below. Do not force `unknown`. Do not put the threshold in `classify.txt` (models would round up to pass). Override in `.env`. | Locked as control-flow retry |
 | Lockfile names | See list below | Widen later via the same Rule list |
 | File budget | Max **20** files (`REASON_MAX_NUMBER_FILES`); each patch truncated to **4000** chars (`REASON_MAX_FILE_PATCH_SIZE`); filenames + status always kept. Classify Input marks a cut patch with `[truncated]` on the file heading. Override in `.env`. | Open to retune |
 | Bot filter | **None** in v1 | Dependabot PRs may still flow. Extension-shaped later. |
@@ -128,7 +128,6 @@ Do not silently resolve these into architecture-changing behavior.
 ### Must decide before a polished demo (not before Phase 1)
 
 - Exact Ollama model if `qwen2.5:14b` is too weak or too slow on diffs
-- Confidence: number-only vs **control-flow** (second Summarize, extra fetch, or force `unknown`)
 - What the UI highlights (`security` first? filter? confidence sort?)
 - Customer paragraph: who uses this, what decision a row drives, cost of wrong/missing
 - Which **two** official tradeoff pairs to write in README (human-only)
@@ -189,3 +188,4 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — `ollama:up` starts serve only if `GET /api/ps` is not OK. `ollama:down` is `pgrep ollama` then `/bin/kill` (Task's shell has no `kill` builtin).
 - 2026-08-27 — Console and pgAdmin sit on Compose profile `debug`. They are not started by `docker compose up` / `task infra:up`. Start with `docker compose --profile debug up -d`.
 - 2026-08-27 — Reason file budget is `REASON_MAX_NUMBER_FILES` (default 20) and `REASON_MAX_FILE_PATCH_SIZE` (default 4000). Override in `.env`; Compose passes both into the reason service.
+- 2026-08-27 — Classification: `CONFIDENCE_THRESHOLD` (default 0.6). One extra classify attempt if parsed confidence is below; persist even if still low. Do not re-Summarize or force `unknown`.

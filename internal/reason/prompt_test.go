@@ -83,6 +83,16 @@ func TestClassifyPrompt_summaryThenInput(t *testing.T) {
 	}
 }
 
+func TestClassifyPrompt_hasConfidenceSection(t *testing.T) {
+	got := classifyPrompt(sampleEvidence(), Summary{AffectedArea: "a", Summary: "s"})
+	if !strings.Contains(got, "## Confidence\n") {
+		t.Fatalf("classify.txt must include ## Confidence: %q", got)
+	}
+	if strings.Contains(got, "CONFIDENCE_THRESHOLD") || strings.Contains(got, "0.6 threshold") {
+		t.Fatalf("first classify prompt must not include the Go threshold: %q", got)
+	}
+}
+
 func TestSummarizePrompt_omitsPatches(t *testing.T) {
 	got := summarizePrompt(Input{
 		Title: "UNIQUE_TITLE_TOKEN",

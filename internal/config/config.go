@@ -8,16 +8,17 @@ import (
 )
 
 type Config struct {
-	KafkaBrokers     []string
-	KafkaTopic       string
-	KafkaGroup       string
-	PostgresDSN      string
-	GitHubToken      string
-	GitHubUserAgent  string
-	OllamaURL        string
-	OllamaModel      string
-	MaxNumberFiles   int
-	MaxFilePatchSize int
+	KafkaBrokers        []string
+	KafkaTopic          string
+	KafkaGroup          string
+	PostgresDSN         string
+	GitHubToken         string
+	GitHubUserAgent     string
+	OllamaURL           string
+	OllamaModel         string
+	MaxNumberFiles      int
+	MaxFilePatchSize    int
+	ConfidenceThreshold float64
 }
 
 func FromEnv() (Config, error) {
@@ -29,17 +30,22 @@ func FromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	threshold, err := getenvFloat("CONFIDENCE_THRESHOLD", 0.6)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
-		KafkaTopic:       getenv("KAFKA_TOPIC", "github.pr.opened"),
-		KafkaGroup:       getenv("KAFKA_GROUP", "pr-triage-worker"),
-		PostgresDSN:      getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
-		GitHubToken:      os.Getenv("GITHUB_TOKEN"),
-		GitHubUserAgent:  getenv("GITHUB_USER_AGENT", "redpanda-build-exercise"),
-		OllamaURL:        getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
-		OllamaModel:      getenv("OLLAMA_MODEL", "qwen2.5:14b"),
-		MaxNumberFiles:   maxFiles,
-		MaxFilePatchSize: maxPatch,
+		KafkaTopic:          getenv("KAFKA_TOPIC", "github.pr.opened"),
+		KafkaGroup:          getenv("KAFKA_GROUP", "pr-triage-worker"),
+		PostgresDSN:         getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
+		GitHubToken:         os.Getenv("GITHUB_TOKEN"),
+		GitHubUserAgent:     getenv("GITHUB_USER_AGENT", "redpanda-build-exercise"),
+		OllamaURL:           getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
+		OllamaModel:         getenv("OLLAMA_MODEL", "qwen2.5:14b"),
+		MaxNumberFiles:      maxFiles,
+		MaxFilePatchSize:    maxPatch,
+		ConfidenceThreshold: threshold,
 	}
 	if cfg.GitHubToken == "" {
 		return Config{}, fmt.Errorf("GITHUB_TOKEN is empty")
@@ -91,6 +97,21 @@ func getenvInt(key string, fallback int) (int, error) {
 	}
 	if n <= 0 {
 		return 0, fmt.Errorf("%s must be > 0", key)
+	}
+	return n, nil
+}
+
+func getenvFloat(key string, fallback float64) (float64, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if n < 0 || n > 1 {
+		return 0, fmt.Errorf("%s must be between 0 and 1", key)
 	}
 	return n, nil
 }

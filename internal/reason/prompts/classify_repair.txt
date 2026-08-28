@@ -6,7 +6,7 @@ The previous reply was not valid output. Produce a corrected classification from
 
 - Emit a single JSON object with category, confidence, and rationale.
 - category must be one of: security, feature, refactor, docs, dependency-bump, unknown.
-- confidence is a number from 0 to 1.
+- confidence is a number from 0 to 1. Score it from the evidence (patches, competing labels, truncation). A low score is valid; do not inflate it.
 - Ground the label in Summary, Body, and Changed Files, not the title alone.
 - Title may be an empty string. Body may be empty or truncated. A file may have no patch, or a `[truncated]` patch; still use filename, status, and counts.
 

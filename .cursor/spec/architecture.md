@@ -154,6 +154,8 @@ Cache: Connect `cache` resource, key `event_id`. Memory is fine for local demo (
  STEP 2 Classification (Model): category + confidence + rationale
         using Summary + body + files (truncated)
         parse; retry; else unknown
+        if confidence < CONFIDENCE_THRESHOLD: one extra classify
+        persist last valid result (even if still below)
         │
         ▼
  upsert pr_triages (PK event_id)
@@ -187,6 +189,10 @@ Instruction prefixes are files under `internal/reason/prompts/` (`summarize.txt`
 **Summarize** must produce structured JSON, e.g. `{ "affected_area": string, "summary": string }`. Exact keys may vary; parse must be tolerant.
 
 **Classification** must produce `{ "category": string, "confidence": number, "rationale": string }`.
+
+`classify.txt` has a **Confidence** section: score from evidence quality (patches vs competing labels, truncation, empty body). A low score is valid. Go does **not** put `CONFIDENCE_THRESHOLD` in that prompt.
+
+If parsed `confidence` is below `CONFIDENCE_THRESHOLD` (default 0.6), send Classification **once more** (same Summary + Input, plus a suffix with the previous score). Do not re-run Summarize. Persist the last valid JSON even if still below. Do not force `unknown` for a low score.
 
 `category` normalized: trim, lowercase, hyphenate spaces if needed. If not in the enum → retry once with a “label must be one of …” repair prompt, then `unknown`.
 

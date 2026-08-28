@@ -6,7 +6,6 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 
 - Use Summary, Body, and Changed Files. Prefer patches and file paths over the title.
 - category must be one of: security, feature, refactor, docs, dependency-bump, unknown.
-- confidence is a number from 0 to 1. Lower when evidence is thin, mixed, or the label is a close call.
 - rationale: one or two sentences citing the files or body that support the label.
 - Summary: `affected_area` and `summary` from step 1. Trust them when they match the files; if they conflict, prefer the files.
 - Title: always first in Input; may be an empty string. Weak context only; do not classify from it alone.
@@ -15,6 +14,25 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 - Each file: `#### {filename} ({status})` then a patch when one exists. Status is typically added, modified, or removed. If the heading ends with `[truncated]`, the patch was cut and later hunks are missing. A file may have no patch (binary, or GitHub omitted it).
 - How to read a patch: it is a unified diff (git diff hunks from GitHub's Files API), usually starting at `@@` rather than `diff --git`. `@@ -oldStart,oldCount +newStart,newCount @@` begins a hunk. The first character of each following line is the marker: space = unchanged context, `-` = removed from the old file, `+` = added in the new file; the rest of the line is content. Do not treat later `+`/`-` in the line as markers. If `[truncated]`, classify from what is visible plus filename, status, and counts; do not invent missing hunks; lower confidence when the cut could hide the real change.
 
+## Confidence
+
+confidence is a number from 0 to 1. It measures how strongly the evidence in this prompt supports the chosen category — not how important the PR is, and not a minimum you must hit. A low value is a correct answer when the evidence is weak, mixed, or incomplete.
+
+Calculate it from observables, not a gut feel:
+- How many listed files and visible hunks support this category versus another allowed label.
+- Whether the body describes the same change as the files.
+- Whether patches are missing or marked `[truncated]`.
+- Whether two labels fit about equally (pick the better label, lower the score).
+
+Bands (stay in the band that matches the evidence; do not round up):
+- 0.85–1.00: patches and paths point to one category; no serious competing label.
+- 0.70–0.84: best fit is clear; a second label is possible but weaker.
+- 0.50–0.69: mixed tree, thin body, or a close call between two labels.
+- 0.25–0.49: truncated or missing patches, title-only signal, or two labels fit equally.
+- 0.00–0.24: almost no usable evidence, or the change does not fit any label (prefer unknown).
+
+Lower the score when the file list is capped, a patch is `[truncated]`, the body is empty, the title is the only signal, or files mix docs with code. Do not default to 0.5. Do not raise the number to look more certain.
+
 ## Do not
 
 - Do not make network or API calls. Do not fetch GitHub, clone a repository, follow links, browse the web, or use tools. Rely only on this prompt.
@@ -22,6 +40,7 @@ This is step 2 of 2: assign a category using the Summary from step 1 and the evi
 - Do not treat a missing or `[truncated]` patch as proof the rest of the file is empty; still use filename, status, and counts.
 - Do not classify from the title alone, or when the title contradicts body and files.
 - Do not invent a category outside the allowed list.
+- Do not inflate confidence.
 
 ## Output
 
