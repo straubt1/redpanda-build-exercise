@@ -6,5 +6,6 @@
   "title": "Hello world",
   "author": "vjeux",
   "action": "opened",
-  "created_at": "2017-01-10T00:00:00Z"
+  "created_at": "2017-01-10T00:00:00Z",
+  "public": true
 }

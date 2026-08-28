@@ -25,6 +25,7 @@ type Message struct {
 	Author    string `json:"author"`
 	Action    string `json:"action"`
 	CreatedAt string `json:"created_at"`
+	Public    bool   `json:"public"`
 }
 
 func Run(ctx context.Context, cfg config.Config) error {
@@ -178,6 +179,7 @@ func rowFromMessage(msg Message) store.Row {
 		PRURL:     msg.PRURL,
 		Author:    msg.Author,
 		Action:    msg.Action,
+		Public:    msg.Public,
 		Category:  "unknown",
 		Source:    "fallback",
 		Rationale: "pending enrichment",

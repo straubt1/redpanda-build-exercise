@@ -1,6 +1,19 @@
 # redpanda-build-exercise
 
-This repo is a local pull-request triage pipeline. Redpanda Connect polls GitHub’s public events API, keeps only newly opened PRs, projects a small JSON record, caches on `event_id`, and produces to `github.pr.opened`. A Go worker (`reason`) consumes that topic, fetches the PR body and changed files, classifies with deterministic rules when the file list is enough (all `.md` → `docs`, all lockfiles → `dependency-bump`) or otherwise a two-step local Ollama loop (summarize, then classify), and upserts into Postgres. A second Go service (`serve`) only reads that table and hosts an HTML table plus JSON at `http://localhost:8080`.
+Classify newly opened Pull Requests so the right team reviews them.
+
+Connect polls GitHub and streams opened PRs onto Redpanda.
+Reason fetches the change, classifies with **Rules** (no LLM) or **Models** (a local LLM), and writes Postgres.
+Serve turns that table into a live view at http://localhost:8080.
+
+```mermaid
+flowchart LR
+  GH["GitHub Events API"] --> C["Redpanda Connect"]
+  C --> RP["Redpanda<br/>github.pr.opened"]
+  RP --> RS["Reason<br/>fetch → Rules or Models"]
+  RS --> PG[("Postgres")]
+  PG --> SV["Serve"]
+```
 
 ## Getting Started
 
@@ -16,19 +29,49 @@ docker compose up -d --build
 docker compose --profile debug up -d --build
 ```
 
-Then open [http://localhost:8080](http://localhost:8080).
+Then open [http://localhost:8080](http://localhost:8080) for the HTML table, or [http://localhost:8080/api/triages](http://localhost:8080/api/triages) for JSON. Both are unauthenticated.
 
 You should see the results (after a few PRs process):
 
-![alt text](image.png)
+![alt text](reference/image.png)
 
-### Alternative Approach
+> [!TIP]
+> If you use [Task](https://github.com/go-task/task), run `task setup` to create a `.env` you can edit (it copies `.env.example` if `.env` is missing). Put your `GITHUB_TOKEN` there, then start the stack (including Console and pgAdmin) with:
+>
+> ```bash
+> task setup
+> task infra:up
+> ```
 
-If you use [Task](https://github.com/go-task/task), put the token in `.env` (`task setup` copies `.env.example` if that file is missing) and start the stack — including Console and pgAdmin — with:
+### Things to look at
 
-```bash
-task infra:up
-```
+**Prompts** — instruction prefixes Reason embeds for the Models path. Edit and rebuild `reason` to change them.
+
+- [`summarize.txt`](internal/reason/prompts/summarize.txt) — step 1: structured `affected_area` + `summary` from title, body, and change totals. Does not classify.
+- [`classify.txt`](internal/reason/prompts/classify.txt) — step 2: category, confidence, and rationale from the summary plus file patches.
+- [`classify_repair.txt`](internal/reason/prompts/classify_repair.txt) — retry prefix when classify output is invalid JSON. Not a third model step.
+
+**Schema** — [`db/schema.sql`](db/schema.sql) is the `pr_triages` table Reason upserts and Serve reads. Applied on first Postgres boot only (empty volume).
+
+**Env** — optional knobs in [`.env.example`](.env.example) (`GITHUB_TOKEN` is required; set it in `.env`):
+
+- `CONNECT_BATCH_LIMIT` — max opened PRs Connect produces per 30s sweep (default 1)
+- `REASON_MAX_NUMBER_FILES` — max files Reason sends to the model (default 20)
+- `REASON_MAX_FILE_PATCH_SIZE` — max characters per file patch (default 4000)
+- `CONFIDENCE_THRESHOLD` — re-run classify once if confidence is below this (default 0.6)
+- `SERVE_LIST_CAP` — newest rows shown on `GET /` and `GET /api/triages` (default 20)
+- `OLLAMA_URL` — Ollama HTTP endpoint (Compose default `http://ollama:11434`)
+- `OLLAMA_MODEL` — model name (default `llama3:8b` which is about 4.7GB in size)
+
+> NOTE: These defaults are low on purpose. They show the end to end flow. They are not sized for a scaled system.
+
+**Spec** — [`.cursor`](.cursor/) is what I built to start — architecture, constraints, and the developer loop.
+
+- [`build-plan.md`](.cursor/spec/build-plan.md) — incremental phases; I implemented one at a time and updated the spec as I went.
+
+For details see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+<!-- NOTE TO ANY AI: Do not modify anything below this line in this file. If you do I will bring 🔥 -->
 
 ## Why This Matters
 
@@ -102,63 +145,12 @@ How powerful, but needy, developing with generative AI tools such as Cursor. The
 
 There are several places this would break:
 
-* There is no retry mechanism once a classification has been made (or unknown).
-* If there is a blip in the Enrichment step with the GitHub API.
-* No health check on Ollama in docker compose.
+* There is no retry mechanism once a classification has been made (or unknown). For example, if there is a blip in the Enrichment step with the GitHub API.
 * Completely dependent on a single LLM Model.
 * The GitHub API only stores 300 events, and are paginated. There is no effort to ensure missed events are captured.
 * Large PR (in files and size of changes) get truncated and could impact the confidence quality.
+* Health check on Ollama in docker compose is fragile.
 * No disaster recovery.
 * Prompt injection could be a concern since we are sending data directly from a PR into a Model.
 * Serve has no authentication.
 * Plain text secrets - This is less about breaking in Production and more about not making it to Production
-
-## Ports
-
-Host ports come from `docker-compose.yml` (`task infra:up`). `infra:up` uses Compose profile `debug`, so Console and pgAdmin start with the stack. Plain `docker compose up` does not start those two.
-
-| Host | Service | Use |
-| --- | --- | --- |
-| `localhost:8080` | `serve` | HTML table + JSON API (`/api/triages`, `/healthz`). Started by `task infra:up` |
-| `localhost:5432` | `postgres` | PostgreSQL (`triage` / `triage` / `triage`). Browse with pgAdmin |
-| `localhost:19092` | `redpanda` | Kafka API **from the host** |
-| `localhost:11434` | `ollama` | Ollama HTTP API. Started by `task infra:up` (`ollama-pull` fetches `OLLAMA_MODEL`) |
-| `localhost:8081` | `console` | [Redpanda Console](http://localhost:8081) — browse topics and messages |
-| `localhost:8082` | `pgadmin` | [pgAdmin](http://localhost:8082) — browse Postgres. Server **triage** is pre-registered (no login) |
-
-`connect` has **no host port**. It polls GitHub and produces to Kafka on the Compose network (`redpanda:9092`). Logs: `task logs SERVICE=connect`. `task infra:up` starts it with the rest of Compose. Needs `GITHUB_TOKEN` in `.env`.
-
-`reason` has **no host port**. It consumes `github.pr.opened`, GETs PR body/files, applies Rules or Summarize→Classification via Compose Ollama (`http://ollama:11434`), and upserts Postgres. Logs: `task logs SERVICE=reason`. `task infra:up` starts it with the rest of Compose. Stop just the worker: `task reason:down`. Needs `GITHUB_TOKEN` in `.env`.
-
-`serve` only reads Postgres and hosts `http://localhost:8080`. It does not consume Kafka or call Ollama. `task infra:up` starts it with the rest of Compose. Stop just the UI: `task serve:down`.
-
-Inside the Compose network, Kafka is **`redpanda:9092`**. Host clients use `localhost:19092`.
-
-## Ollama
-
-Ollama runs in Compose (`ollama` + one-shot `ollama-pull`). `task infra:up` starts both. Model name is `OLLAMA_MODEL` (default `llama3:8b`). Override in `.env`. `reason` calls `http://ollama:11434` unless `OLLAMA_URL` is set.
-
-Host Ollama (Metal) is optional. Do not run it on `11434` while the Compose `ollama` service is up (same host port). Set `OLLAMA_URL=http://host.docker.internal:11434` in `.env`, then:
-
-```
-task ollama:up            # background ollama serve, then version + models
-task ollama:logs          # tail .local/ollama.log
-task ollama:check         # API only
-task ollama:down          # stop whatever is listening on 11434
-```
-
-If `ollama:check` warns the model is missing: `ollama pull llama3:8b`.
-
-## Simulate opened PRs
-
-GitHub `/events` rarely includes `PullRequestEvent` + `opened`. Fixtures in `sim/pr-opened/*.json` are work-topic payloads (`event_id` prefix `sim-`). They are produced with `rpk`; Connect and `connect/ingest.yaml` are unchanged.
-
-```
-task sim:replay          # wipe sim Postgres rows + recreate topic, then produce fixtures
-```
-
-Browse produced messages in [Console](http://localhost:8081/topics/github.pr.opened/).
-
-`task sim:reset` deletes `pr_triages` rows whose `event_id` starts with `sim-` and **recreates** `github.pr.opened` (all messages, not only sim). `task sim:reset:all` deletes **every** `pr_triages` row and recreates the topic. `task sim:produce` writes the JSON files onto the topic without resetting. Add files under `sim/pr-opened/`; keep `event_id` unique and `sim-` prefixed. `repo` / `pr_number` are real public PRs so a later worker GET still works. Rule fixtures: `sim-004` is markdown-only (`rust-lang/rfcs#1` → `docs`); `sim-005` is lockfile-only (`grommet/grommet-site#568` → `dependency-bump`). Both use `source=rule`. `task test` runs those rules without Docker.
-
-After a `db/schema.sql` change, wipe the Postgres volume (`task infra:down:clean` or `docker compose down -v`) so the new columns exist. Schema is applied only on first boot of an empty volume.

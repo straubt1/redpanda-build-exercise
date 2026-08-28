@@ -66,12 +66,18 @@ func FromEnv() (Config, error) {
 type ServeConfig struct {
 	PostgresDSN string
 	HTTPAddr    string
+	ListCap     int
 }
 
 func ServeFromEnv() (ServeConfig, error) {
+	listCap, err := getenvInt("SERVE_LIST_CAP", 20)
+	if err != nil {
+		return ServeConfig{}, err
+	}
 	cfg := ServeConfig{
 		PostgresDSN: getenv("POSTGRES_DSN", "postgres://triage:triage@localhost:5432/triage?sslmode=disable"),
 		HTTPAddr:    getenv("HTTP_ADDR", ":8080"),
+		ListCap:     listCap,
 	}
 	if cfg.PostgresDSN == "" {
 		return ServeConfig{}, fmt.Errorf("POSTGRES_DSN is empty")

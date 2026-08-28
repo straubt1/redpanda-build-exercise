@@ -68,7 +68,7 @@ GET https://api.github.com/events
         │
         ▼
  project: event_id, repo, pr_number, pr_url,
-          author, action, created_at
+          author, action, created_at, public
         │
         ▼
  cap N per sweep (CONNECT_BATCH_LIMIT, default 1)
@@ -93,7 +93,7 @@ GET https://api.github.com/events
 
 `/events` PullRequestEvent payloads are truncated: **no `title`**, and often no `html_url`. Do not map title in Connect. The worker fills `title` from `GET /repos/{repo}/pulls/{pr_number}`.
 
-`author` / `created_at` may be empty strings if missing.
+`author` / `created_at` may be empty strings if missing. `public` is a JSON boolean; if the event omits it, Connect writes `false`.
 
 ```json
 {
@@ -103,7 +103,8 @@ GET https://api.github.com/events
   "pr_url": "https://github.com/owner/name/pull/42",
   "author": "login",
   "action": "opened",
-  "created_at": "2026-08-26T17:06:33Z"
+  "created_at": "2026-08-26T17:06:33Z",
+  "public": true
 }
 ```
 
@@ -118,6 +119,7 @@ Mapping (verified against a live `/events` PullRequestEvent):
 | `author` | `.actor.login` or `.payload.pull_request.user.login` |
 | `action` | `.payload.action` |
 | `created_at` | `.created_at` (already ISO-8601; do not pass raw epoch into Postgres) |
+| `public` | `.public` (bool) |
 
 Bloblang: a `mapping` rebuilds `root` from scratch. Start with `root = this` or set all fields in one mapping. Use `.catch(deleted())` on JSON parse if needed so one bad record does not poison the pipeline.
 
@@ -228,6 +230,7 @@ CREATE TABLE IF NOT EXISTS pr_triages (
   pr_url          TEXT NOT NULL DEFAULT '',
   author          TEXT NOT NULL DEFAULT '',
   action          TEXT NOT NULL DEFAULT 'opened',
+  public          BOOLEAN NOT NULL DEFAULT false,
   category        TEXT NOT NULL,
   confidence      DOUBLE PRECISION,
   rationale       TEXT NOT NULL DEFAULT '',
@@ -258,17 +261,17 @@ v1, `localhost:8080`:
 - `GET /api/triages` — JSON of the **same** rows (same filters/sort) plus `stats`. `Content-Type: application/json`.
 - `GET /healthz` — 200 if Postgres ping succeeds.
 
-Show: when, repo, PR number (link `pr_url`) with title under it, category, confidence, source, affected area, summary, rationale.
+Show: when, repo, PR number (link `pr_url`) with title under it, category, confidence, source, rationale. `public`, `affected_area`, and `summary` are on `GET /api/triages` only, not HTML columns.
 
-**List cap:** inner query takes the **20** newest by `classified_at`; outer query applies `sort`/`dir`. Newest rows are always in the set.
+**List cap:** inner query takes the newest **N** by `classified_at` (`SERVE_LIST_CAP`, default 20); outer query applies `sort`/`dir`. Newest rows are always in the set.
 
-**Stats** (all rows, not just the 20): total; not reasoned (`source` not `model` or `rule`); count `source=model`; count `source=rule`. Shown above the table.
+**Stats** (all rows, not just the listed cap): total; not reasoned (`source` not `model` or `rule`); count `source=model`; count `source=rule`. Shown above the table.
 
 **When:** ISO timestamp in `<time datetime>`; a few lines of inline JS format the browser-local clock (`1:30 pm`) and set `title` to the full local datetime with seconds. No JS framework.
 
 **CSS:** Inline styles matching `.reference/index.html` (system UI font, `#f7f8f5` page, white table, `#0b5` links). No Pico, no SPA, no JS framework.
 
-**Sort:** query params `sort` and `dir` (`asc`|`desc`). Column headers on `GET /` are links that toggle dir. Allowlist `sort` to real columns (e.g. `classified_at`, `category`, `repo`, `title`, `confidence`, `source`). Reject unknown `sort` with 400 on the API; HTML falls back to default. HTML and JSON share one list/query function.
+**Sort:** query params `sort` and `dir` (`asc`|`desc`). Column headers on `GET /` are links that toggle dir. Allowlist `sort` to real columns (e.g. `classified_at`, `category`, `repo`, `title`, `confidence`, `source`, `public`). Reject unknown `sort` with 400 on the API; HTML falls back to default. HTML and JSON share one list/query function. `public` is allowlisted for the API; it is not a table header.
 
 Empty table: visible empty state, not a 500.
 

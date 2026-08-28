@@ -30,11 +30,11 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           serve.New(db).Handler(),
+		Handler:           serve.New(db, cfg.ListCap).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
-		applog.Info.Printf("serve listening %s", cfg.HTTPAddr)
+		applog.Info.Printf("serve listening %s list_cap=%d", cfg.HTTPAddr, cfg.ListCap)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			applog.Err.Fatalf("listen: %v", err)
 		}

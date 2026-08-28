@@ -44,14 +44,12 @@ const pageHTML = `<!DOCTYPE html>
         <th><a href="/?sort=category&amp;dir={{nextDir .Sort .Dir "category"}}">Category</a></th>
         <th><a href="/?sort=confidence&amp;dir={{nextDir .Sort .Dir "confidence"}}">Conf</a></th>
         <th><a href="/?sort=source&amp;dir={{nextDir .Sort .Dir "source"}}">Source</a></th>
-        <th>Area</th>
-        <th>Summary</th>
         <th>Rationale</th>
       </tr>
     </thead>
     <tbody>
       {{if not .Rows}}
-      <tr><td colspan="9" class="muted">No triages yet — wait for Connect to poll GitHub and the worker to classify.</td></tr>
+      <tr><td colspan="7" class="muted">No triages yet — wait for Connect to poll GitHub and the worker to classify.</td></tr>
       {{else}}
       {{range .Rows}}
       <tr>
@@ -61,8 +59,6 @@ const pageHTML = `<!DOCTYPE html>
         <td class="cat">{{.Category}}</td>
         <td>{{fmtConf .Confidence}}</td>
         <td>{{.Source}}</td>
-        <td>{{.AffectedArea}}</td>
-        <td>{{.Summary}}</td>
         <td>{{.Rationale}}</td>
       </tr>
       {{end}}

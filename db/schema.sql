@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS pr_triages (
   pr_url          TEXT NOT NULL DEFAULT '',
   author          TEXT NOT NULL DEFAULT '',
   action          TEXT NOT NULL DEFAULT 'opened',
+  public          BOOLEAN NOT NULL DEFAULT false,
   category        TEXT NOT NULL,
   confidence      DOUBLE PRECISION,
   rationale       TEXT NOT NULL DEFAULT '',

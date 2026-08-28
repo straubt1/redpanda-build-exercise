@@ -20,6 +20,7 @@ type Row struct {
 	PRURL        string     `json:"pr_url"`
 	Author       string     `json:"author"`
 	Action       string     `json:"action"`
+	Public       bool       `json:"public"`
 	Category     string     `json:"category"`
 	Source       string     `json:"source"`
 	Rationale    string     `json:"rationale"`
@@ -61,6 +62,7 @@ var sortColumns = map[string]string{
 	"pr_number":     "pr_number",
 	"author":        "author",
 	"event_id":      "event_id",
+	"public":        "public",
 }
 
 const (
@@ -94,23 +96,26 @@ func NormalizeOrder(sort, dir string) (col, direction string, ok bool) {
 	return col, direction, true
 }
 
-func (s *Store) List(ctx context.Context, sortCol, dir string) ([]Row, error) {
+func (s *Store) List(ctx context.Context, sortCol, dir string, limit int) ([]Row, error) {
+	if limit <= 0 {
+		limit = ListCap
+	}
 	col, direction, ok := NormalizeOrder(sortCol, dir)
 	if !ok {
 		col, direction = DefaultSort, DefaultDir
 	}
 	q := fmt.Sprintf(`
-SELECT event_id, repo, pr_number, title, pr_url, author, action,
+SELECT event_id, repo, pr_number, title, pr_url, author, action, public,
   category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
 FROM (
-  SELECT event_id, repo, pr_number, title, pr_url, author, action,
+  SELECT event_id, repo, pr_number, title, pr_url, author, action, public,
     category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
   FROM pr_triages
   ORDER BY classified_at DESC
   LIMIT %d
 ) recent
 ORDER BY %s %s NULLS LAST
-`, ListCap, col, direction)
+`, limit, col, direction)
 	rows, err := s.pool.Query(ctx, q)
 	if err != nil {
 		return nil, err
@@ -121,7 +126,7 @@ ORDER BY %s %s NULLS LAST
 	for rows.Next() {
 		var r Row
 		if err := rows.Scan(
-			&r.EventID, &r.Repo, &r.PRNumber, &r.Title, &r.PRURL, &r.Author, &r.Action,
+			&r.EventID, &r.Repo, &r.PRNumber, &r.Title, &r.PRURL, &r.Author, &r.Action, &r.Public,
 			&r.Category, &r.Source, &r.Rationale, &r.Error, &r.Confidence, &r.AffectedArea, &r.Summary,
 			&r.CreatedAt, &r.ClassifiedAt,
 		); err != nil {
@@ -148,9 +153,9 @@ FROM pr_triages
 func (s *Store) Upsert(ctx context.Context, row Row) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO pr_triages (
-  event_id, repo, pr_number, title, pr_url, author, action,
+  event_id, repo, pr_number, title, pr_url, author, action, public,
   category, source, rationale, error, confidence, affected_area, summary, created_at, classified_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
 ON CONFLICT (event_id) DO UPDATE SET
   repo = EXCLUDED.repo,
   pr_number = EXCLUDED.pr_number,
@@ -158,6 +163,7 @@ ON CONFLICT (event_id) DO UPDATE SET
   pr_url = EXCLUDED.pr_url,
   author = EXCLUDED.author,
   action = EXCLUDED.action,
+  public = EXCLUDED.public,
   category = EXCLUDED.category,
   source = EXCLUDED.source,
   rationale = EXCLUDED.rationale,
@@ -167,7 +173,7 @@ ON CONFLICT (event_id) DO UPDATE SET
   summary = EXCLUDED.summary,
   created_at = EXCLUDED.created_at,
   classified_at = now()
-`, row.EventID, row.Repo, row.PRNumber, row.Title, row.PRURL, row.Author, row.Action,
+`, row.EventID, row.Repo, row.PRNumber, row.Title, row.PRURL, row.Author, row.Action, row.Public,
 		row.Category, row.Source, row.Rationale, row.Error, row.Confidence, row.AffectedArea, row.Summary, row.CreatedAt)
 	return err
 }

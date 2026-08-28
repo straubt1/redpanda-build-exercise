@@ -5,5 +5,6 @@
     "event_id": "13915283357",
     "pr_number": 89663,
     "pr_url": "https://api.github.com/repos/PostHog/posthog/pulls/89663",
+    "public": true,
     "repo": "PostHog/posthog"
 }

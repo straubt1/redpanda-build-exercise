@@ -63,7 +63,8 @@ pipeline:
             "pr_url": this.payload.pull_request.url.or(""),
             "author": this.actor.login.or(this.payload.pull_request.user.login.or("")),
             "action": this.payload.action.or(""),
-            "created_at": this.created_at.or("")
+            "created_at": this.created_at.or(""),
+            "public": this.public.or(false)
           }
         }
     # Cap survivors per generate sweep (batch_index is 0-based; only applies while still one batch).

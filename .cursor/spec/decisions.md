@@ -35,7 +35,7 @@ Status vocabulary:
 | Allowlist now | `["opened"]` only |
 | Allowlist later | Add actions (e.g. `reopened`, `synchronize`) via config, not a new pipeline |
 | Dedupe | Connect **cache**, key = GitHub event `id` |
-| Project | Small schema: ids + urls the worker needs to fetch and upsert. Not the raw event blob. |
+| Project | Small schema: ids + urls the worker needs to fetch and upsert, plus `public` (bool from the GitHub event). Not the raw event blob. |
 
 ### Reason (Go)
 
@@ -73,8 +73,8 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Go entrypoints | `cmd/reason/main.go`, `cmd/serve/main.go` | Two Compose services, two binaries. Same module. |
 | HTTP port | `8080` | Compose publishes `8080`. |
 | UI CSS | Inline styles from `.reference/index.html` | Warm gray page (`#f7f8f5`), white table, uppercase headers, green links (`#0b5`). No Pico. |
-| Table sort | Query `sort` + `dir` | Default `classified_at` `desc`. Same params on HTML and JSON. Allowlist columns (no raw SQL identifiers). |
-| Table list | Latest **20** by `classified_at`, then sort | Newest rows always in the result set. Sort reorders those 20, it does not pick a different slice. |
+| Table sort | Query `sort` + `dir` | Default `classified_at` `desc`. Same params on HTML and JSON. Allowlist columns including `public` (no raw SQL identifiers). |
+| Table list | Latest **N** by `classified_at`, then sort | Default **20** (`SERVE_LIST_CAP`). Newest rows always in the result set. Sort reorders that slice, it does not pick a different window. Override in `.env`. |
 | UI stats | Counts over **all** `pr_triages` | Total; not reasoned (`source` not `model`/`rule`); `source=model`; `source=rule`. |
 | When column | Browser local time | Display like `1:30 pm`; `title` hover is full local datetime with seconds. Tiny inline JS; no library. |
 | JSON API | `GET /api/triages` | Same row set as `GET /`, plus `stats`. |
@@ -92,7 +92,7 @@ Connect cache means a later GitHub poll **will not** re-deliver the same `id`. F
 | Inspect topics | `task topic:consume` (`FOLLOW=1` to tail) | `rpk` in the Redpanda container |
 | Inspect Postgres UI | pgAdmin `http://localhost:8082` | Compose profile `debug` (`docker compose --profile debug up -d`). No login (`SERVER_MODE=False`). Server **triage** is registered from `pgadmin/servers.json`. |
 | Host Ollama | `task ollama:up` / `ollama:logs` / `ollama:down` / `ollama:check` | `up` starts `OLLAMA_HOST=0.0.0.0:11434 ollama serve` unless `GET http://127.0.0.1:11434/api/ps` is already OK. `down` is `pgrep ollama` then `/bin/kill`. Logs: `.local/ollama.log`. |
-| `infra:up` | Default Compose stack | Postgres, Redpanda, Connect, **reason**, **serve**, Compose **ollama** + **ollama-pull**. Requires `GITHUB_TOKEN`. Console and pgAdmin are profile `debug`. |
+| `infra:up` | Default Compose stack | Postgres, Redpanda, Connect, **reason**, **serve**, Compose **ollama** (pulls `OLLAMA_MODEL` on start). Requires `GITHUB_TOKEN`. Console and pgAdmin are profile `debug`. |
 | `infra:down` | Stop that stack, keep volumes | `infra:down:clean` also deletes volumes. |
 | jq | Required for `github:events` / `github:pull` / `ollama:check` | Fail clearly if missing |
 | Reason debug dumps | `/logs/{event_id}/` | Always on. Kafka message, enrichment, created prompts + Ollama responses, Postgres row. Fail-open (stderr). Compose bind-mounts `.local/reason-logs:/logs`. |
@@ -192,3 +192,7 @@ Do not silently resolve these into architecture-changing behavior.
 - 2026-08-27 — Classification: `CONFIDENCE_THRESHOLD` (default 0.6). One extra classify attempt if parsed confidence is below; persist even if still low. Do not re-Summarize or force `unknown`.
 - 2026-08-27 — Ollama working default is `llama3:8b` (`OLLAMA_MODEL`). Override in `.env`.
 - 2026-08-27 — `reason` default `OLLAMA_URL` is `http://ollama:11434` (Compose service). Override in `.env` to `http://host.docker.internal:11434` for host Ollama.
+- 2026-08-27 — Work-topic field `public` (bool) from GitHub event `.public`. Connect projects it; reason upserts `pr_triages.public`; `GET /api/triages` includes it. Not an HTML column. Missing value is `false`.
+- 2026-08-28 — HTML table omits `affected_area` and `summary`; both remain on `GET /api/triages`.
+- 2026-08-28 — Serve list cap is `SERVE_LIST_CAP` (default 20). Override in `.env`; Compose passes it into the serve service.
+- 2026-08-28 — Compose `ollama` pulls `OLLAMA_MODEL` on start. No `ollama-pull` sidecar.

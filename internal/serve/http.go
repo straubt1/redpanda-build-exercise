@@ -16,13 +16,18 @@ import (
 var errBadSort = errors.New("unknown sort column")
 
 type Server struct {
-	db   *store.Store
-	page *template.Template
+	db      *store.Store
+	page    *template.Template
+	listCap int
 }
 
-func New(db *store.Store) *Server {
+func New(db *store.Store, listCap int) *Server {
+	if listCap <= 0 {
+		listCap = store.ListCap
+	}
 	return &Server{
-		db: db,
+		db:      db,
+		listCap: listCap,
 		page: template.Must(template.New("page").Funcs(template.FuncMap{
 			"fmtRFC3339": fmtRFC3339,
 			"fmtConf":    fmtConf,
@@ -93,7 +98,7 @@ func (s *Server) load(ctx context.Context, r *http.Request, strict bool) (pageDa
 	if !ok {
 		col, dir = store.DefaultSort, store.DefaultDir
 	}
-	rows, err := s.db.List(ctx, col, dir)
+	rows, err := s.db.List(ctx, col, dir, s.listCap)
 	if err != nil {
 		return pageData{}, err
 	}
@@ -104,7 +109,7 @@ func (s *Server) load(ctx context.Context, r *http.Request, strict bool) (pageDa
 	if err != nil {
 		return pageData{}, err
 	}
-	return pageData{Rows: rows, Sort: col, Dir: dir, Stats: stats, Cap: store.ListCap}, nil
+	return pageData{Rows: rows, Sort: col, Dir: dir, Stats: stats, Cap: s.listCap}, nil
 }
 
 type pageData struct {
